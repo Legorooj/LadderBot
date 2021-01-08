@@ -210,6 +210,9 @@ class League(commands.Cog):
             f'Signups have been {"automatically " if not manual else ""}'
             f'closed.'
         )
+        
+        if not manual:
+            await self.create_matchups()
     
     @commands.command(aliases=['close_signups', 'open_signups'])
     @settings.is_mod_check()

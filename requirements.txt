@@ -1,0 +1,5 @@
+discord.py
+sqlalchemy
+psycopg2
+alembic
+jinja2

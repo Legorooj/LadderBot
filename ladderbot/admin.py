@@ -1,5 +1,6 @@
 # Copyright (c) 2020 Legorooj. This file is licensed under the terms of the Apache license, version 2.0. #
 import os
+import re
 
 import discord
 from discord.ext import commands
@@ -72,6 +73,36 @@ class Admin(commands.Cog):
     @settings.is_mod_check()
     async def confirm(self, ctx: commands.Context, game: settings.GameLoader):
         pass
+    
+    @commands.command()
+    @settings.is_mod_check()
+    async def logs(self, ctx: commands.Context, *, search_term: str = None):
+        
+        if search_term is None:
+            search_term = ''
+    
+        search_term = re.sub(r'\b(\d{2,6})\b', r'_\1_', search_term, count=1) if search_term else None
+        # Above finds a 2-6 digit number in search_term and adds underscores around it
+        # This will cause it to match against the __GAMEID__ the log entries are prefixed with and not substrings from
+        # user IDs
+
+        # replace @Mentions <@272510639124250625> with just the ID 272510639124250625
+        search_term = re.sub(r'<@[!&]?([0-9]{17,21})>', '\\1', search_term) if search_term else None
+
+        results = db.GameLog.search(search_term)
+        
+        message_list = []
+        for entry in results:
+            message_list.append(
+                (f'`{entry.message_ts.strftime("%Y-%m-%d %H:%M:%S")}`', entry.message[:500])
+            )
+            
+        message_list = message_list or [('No entries found', '')]
+        
+        await settings.paginate(
+            ctx, f'Searching for log entries containing *{search_term}*'.replace("_", ""),
+            message_list
+        )
 
 
 def setup(bot, conf):

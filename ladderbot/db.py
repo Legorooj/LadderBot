@@ -218,6 +218,23 @@ class GameLog(Base):
         obj = cls(message=f'__{game_id}__ - {message}')
         add(obj)
     
+    @classmethod
+    def search(cls, keywords: str = None, negative_keyword: str = None, limit: int = 500):
+        if not keywords:
+            keywords = '%'
+        else:
+            keywords = f'%{keywords.replace(" ", "%")}%'
+        
+        if not negative_keyword:
+            negative_keyword = 'thiswillnevershowupinthelogs'
+        else:
+            negative_keyword = f'%{negative_keyword}%'
+            
+        return session.query(GameLog).filter(
+            GameLog.message.ilike(keywords),
+            ~GameLog.message.ilike(negative_keyword)
+        ).order_by(GameLog.message_ts.desc()).limit(limit)
+
 
 def setup(conf):
     global engine

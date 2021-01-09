@@ -370,14 +370,14 @@ class League(commands.Cog):
         # number of people in that rung.
         for r in range(1, 13):
             rung = mobile_tiers[r]
-            rung.sort(key=lambda x: x[0].wins())
+            rung.sort(key=lambda x: x[0].wins().count())
             if len(rung) % 2 == 0:
                 continue
             mobile_tiers[r + 1].append(rung.pop(0))
         
         for r in range(1, 13):
             rung = steam_tiers[r]
-            rung.sort(key=lambda x: x[0].wins())
+            rung.sort(key=lambda x: x[0].wins().count())
             if len(rung) % 2 == 0:
                 continue
             steam_tiers[r + 1].append(rung.pop(0))

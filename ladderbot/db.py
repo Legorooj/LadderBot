@@ -26,15 +26,28 @@ class Player(Base):
     def mention(self):
         return f'<@{self.id}>'
     
-    def wins(self):
-        return session.query(Game).filter_by(winner_id=self.id).count()
-    
     def incomplete(self):
         return session.query(Game).filter(
             or_(Game.host_id == self.id, Game.away_id == self.id) &
             Game.is_confirmed.is_(False)
         ).order_by(Game.opened_ts.desc())
     
+    def complete(self):
+        return session.query(Game).filter(
+            or_(Game.host_id == self.id, Game.away_id == self.id) &
+            Game.is_complete.is_(True)
+        ).order_by(Game.win_claimed_ts.desc())
+    
+    def wins(self):
+        return session.query(Game).filter(
+            Game.winner_id == self.id
+        ).order_by(Game.win_claimed_ts.desc())
+    
+    def losses(self):
+        return session.query(Game).filter(
+            or_(Game.host_id == self.id, Game.away_id == self.id)
+        ).filter(Game.winner_id != self.id).order_by(Game.win_claimed_ts.desc())
+
 
 class Game(Base):
     __tablename__ = 'game'

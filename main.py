@@ -22,7 +22,7 @@ am = discord.AllowedMentions(everyone=False)
 bot = commands.Bot(command_prefix='$', intents=intents, allowed_mentions=am)
 settings.bot = bot
 settings.conf = conf
-settings.server_id = conf['DEFAULT']['serve_id']
+settings.server_id = int(conf['DEFAULT']['server_id'])
 
 
 @bot.event

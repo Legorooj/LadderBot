@@ -20,6 +20,14 @@ class Admin(commands.Cog):
         print(s)
         logger.info(s)
     
+    @commands.command(aliases=['restart'])
+    @commands.is_owner()
+    async def quit(self, ctx: commands.Context):
+        db.session.close()
+        logger.info('Shutting down.')
+        await ctx.send('Shutting down...')
+        await self.bot.close()
+    
     @commands.command()
     @commands.is_owner()
     async def clear_signupmessages(self, ctx):

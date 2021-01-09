@@ -140,7 +140,7 @@ class Matchmaking(commands.Cog):
                     db.Player.ign.ilike(name)
                 )
             if alts.count() > 1:
-                mod_role = utils.get(ctx.guild.roles, name='Moderator')
+                mod_role = utils.get(ctx.guild.roles, name='Mod')
                 msg = (
                     f':warning: This polytopia name is already entered in the database. '
                     f'If you need help using this bot please contact a {mod_role.mention} or <@{settings.owner_id}>.'
@@ -220,7 +220,7 @@ class Matchmaking(commands.Cog):
         
         if ctx.author.id != host.id:
             if not settings.is_mod(ctx.author):
-                return await ctx.send(f'Only the game host or a Moderator can do this.')
+                return await ctx.send(f'Only the game host or a **@Mod** can do this.')
         
         if not settings.is_valid_name(game_name):
             await ctx.send(
@@ -270,7 +270,7 @@ class Matchmaking(commands.Cog):
         
         if ctx.author.id != host.id:
             if not settings.is_mod(ctx.author):
-                return await ctx.send(f'Only the game host or a Moderator can do this.')
+                return await ctx.send(f'Only the game host or a **@Mod** can do this.')
         
         if not settings.is_valid_name(game_name):
             await ctx.send(

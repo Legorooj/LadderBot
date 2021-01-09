@@ -126,7 +126,7 @@ async def fix_roles(*members):
 def is_mod(member: discord.Member):
     if member.id == owner_id:
         return True
-    if discord.utils.get(member.guild.roles, name='Moderator') in member.roles:
+    if discord.utils.get(member.guild.roles, name='Mod') in member.roles:
         return True
     return False
 

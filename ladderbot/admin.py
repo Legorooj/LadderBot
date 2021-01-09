@@ -63,6 +63,8 @@ class Admin(commands.Cog):
         if game.is_complete and '-override' not in args.lower():
             return await ctx.send(f'Please unwin the game first.')
         
+        db.GameLog.write(game_id=game.id, message=f'{db.GameLog.member_string(ctx.author)} manually deleted the game.')
+        
         db.delete(game)
         
         logger.info(f'Game {game.id} deleted.')

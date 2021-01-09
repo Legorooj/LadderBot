@@ -57,6 +57,7 @@ class Game(Base):
     opened_ts = Column(DateTime, nullable=False)
     started_ts = Column(DateTime, nullable=True)
     win_claimed_by = Column(BigInteger, nullable=True)
+    host_switched = Column(Boolean, nullable=False, default=False)
     
     def win_unconfirmed(self, player_id: int, claimed_by: int):
         self.winner_id = player_id

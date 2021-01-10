@@ -12,6 +12,10 @@ class Matchmaking(commands.Cog):
     def __init__(self, bot: commands.Bot, conf: dict):
         self.bot = bot
         self.conf = conf
+        self.loop.start()
+    
+    def cog_unload(self):
+        self.loop.cancel()
     
     async def announce_start(self, guild, channel, game: db.Game):
         drafts: TextChannel = self.bot.get_channel(int(self.conf['channels']['drafts']))
@@ -42,14 +46,14 @@ class Matchmaking(commands.Cog):
         await channel.send('All sides have confirmed this victory. Good game!')
     
     @tasks.loop(minutes=30)
-    async def autoconfirm_loop(self):
+    async def loop(self):
+        # Autoconfirm loop
         logger.debug('Running autoconfirm loop')
         
         unconfirmed = db.session.query(db.Game).filter(
             db.Game.is_complete.is_(True) &
-            db.Game.is_confirmed.is_(False) &
-            db.Game.win_claimed_ts < datetime.datetime.utcnow() - datetime.timedelta(hours=24)
-        )
+            db.Game.is_confirmed.is_(False)
+        ).filter(db.Game.win_claimed_ts < datetime.datetime.utcnow() - datetime.timedelta(hours=24))
         
         for game in unconfirmed.all():
             game: db.Game
@@ -66,6 +70,78 @@ class Matchmaking(commands.Cog):
         if unconfirmed.count() != 0:
             logger.info(f'Autoconfirm process complete. {unconfirmed.count()} games confirmed.')
             await settings.discord_channel_log(f'Autoconfirm process complete. {unconfirmed.count()} games confirmed.')
+        
+        # Game deletion/host switching loop
+        
+        # Games that aren't started
+        to_switch = db.session.query(db.Game).filter(
+            db.Game.is_started.is_(False) &
+            db.Game.host_switched.is_(False)
+        ).filter(db.Game.opened_ts < datetime.datetime.utcnow() - datetime.timedelta(days=3))
+        to_delete = db.session.query(db.Game).filter(
+            db.Game.is_started.is_(False) &
+            db.Game.host_switched.is_(True)
+        ).filter(db.Game.opened_ts < datetime.datetime.utcnow() - datetime.timedelta(days=6))
+        guild = self.bot.get_guild(settings.server_id)
+        for game in to_switch.all():
+            logger.info(f'Switching host on game {game.id}')
+            game: db.Game
+            host, host_step = game.host_id, game.host_step
+            away, away_step = game.away_id, game.away_step
+            game.host_id = away
+            game.host_step = away_step
+            game.away_id = host
+            game.away_step = host_step
+            game.host_switched = True
+            
+            new_host, new_away = guild.get_member(game.host_id), guild.get_member(game.away_id)
+            
+            db.save()
+            
+            drafts: TextChannel = self.bot.get_channel(int(self.conf['channels']['drafts']))
+            
+            await drafts.send(
+                f'{new_host.mention} has become the host for Game ID {game.id} as {new_away.mention} '
+                f'never started it :rage:.'
+            )
+            db.GameLog.write(
+                game_id=game.id,
+                message=f'Host changed from {db.GameLog.member_string(new_away)} to '
+                        f'{db.GameLog.member_string(new_host)} as the game was not started in time.'
+            )
+            await settings.discord_channel_log(
+                f'{new_host.mention} has become the host for Game ID {game.id} as {new_away.mention} '
+                f'never started it.'
+            )
+        
+        for game in to_delete.all():
+            logger.info(f'Deleting full game {game.id} as it was never started.')
+            db.GameLog.write(
+                game_id=game.id,
+                message=f'Game automatically deleted after reaching 6 day limit.'
+            )
+            drafts: TextChannel = self.bot.get_channel(int(self.conf['channels']['drafts']))
+
+            await drafts.send(
+                f'Game ID {game.id} has been deleted as <@!{game.host_id}> never started it :rage:. '
+                f'Notifying players <@!{game.host_id}> <@!{game.away_id}>'
+            )
+            await settings.discord_channel_log(
+                f'Game {game.id} automatically deleted after reaching 6 day limit.'
+            )
+            db.delete(game)
+        
+        if to_switch.count() != 0:
+            logger.info(f'Host switch process complete. {unconfirmed.count()} games switched.')
+            await settings.discord_channel_log(f'Host switch process complete. {unconfirmed.count()} games switched.')
+        
+        if to_delete.count() != 0:
+            logger.info(f'Host switch process complete. {unconfirmed.count()} games deleted.')
+            await settings.discord_channel_log(f'Host switch process complete. {unconfirmed.count()} games deleted.')
+
+    @loop.before_loop
+    async def pre_loop(self):
+        await self.bot.wait_until_ready()
     
     @commands.command(aliases=['steamname'])
     async def setname(self, ctx: commands.Context, *, args=None):

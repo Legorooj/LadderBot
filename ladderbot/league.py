@@ -449,6 +449,10 @@ Tier {{tier}} matchups:
                     step=tier_number
                 )
                 db.add(game)
+                db.GameLog.write(game_id=game.id,
+                                 message=f'Game opened by me. {db.GameLog.member_string(host[1])} hosts against '
+                                         f'{db.GameLog.member_string(away[1])}'
+                                 )
                 out[tier_number].append(game)
         for t in tiers_to_delete:
             del out[t]

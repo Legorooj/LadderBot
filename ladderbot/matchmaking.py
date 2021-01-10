@@ -578,7 +578,7 @@ class Matchmaking(commands.Cog):
             f'Game {game.id} successfully marked as incomplete. Rung changes have been reverted.'
         )
     
-    @commands.command()
+    @commands.command(aliases=['complete', 'losses', 'wins'])
     @settings.is_in_bot_channel()
     async def incomplete(self, ctx: commands.Context, *, member: str = None):
         """
@@ -616,11 +616,24 @@ class Matchmaking(commands.Cog):
         
         dest = ctx.guild.get_member(player.id)
         
-        games = player.incomplete()
+        type_str = 'incomplete'
+        if ctx.invoked_with == 'incomplete':
+            games = player.incomplete()
+        elif ctx.invoked_with == 'complete':
+            games = player.complete()
+            type_str = 'complete'
+        elif ctx.invoked_with == 'wins':
+            games = player.wins()
+            type_str = 'winning'
+        elif ctx.invoked_with == 'losses':
+            games = player.losses()
+            type_str = 'losing'
+        else:
+            games = player.incomplete()  # default to incomplete
         
         if games.count() == 0:
             return await ctx.send(
-                f'No results found. See `$help incomplete` for examples.\nIncluding players: *{dest.name}*'
+                f'No results found. See `$help {ctx.invoked_with}` for examples.\nIncluding players: *{dest.name}*'
             )
         
         fields = []
@@ -629,7 +642,10 @@ class Matchmaking(commands.Cog):
             
             if game.is_complete and game.is_confirmed is False:
                 winner = ctx.guild.get_member(game.winner_id)
-                content_str = f'**WINNER**: (Unconfirmed) {winner.mention}'
+                content_str = f'**WINNER**: (Unconfirmed) {winner.display_name}'
+            elif game.is_confirmed:
+                winner = ctx.guild.get_member(game.winner_id)
+                content_str = f'**WINNER**: {winner.display_name}'
             elif game.is_started:
                 content_str = 'Incomplete'
             else:
@@ -638,12 +654,12 @@ class Matchmaking(commands.Cog):
             fields.append(
                 (
                     f'Game {game.id}   {host.name} vs {away.name}\n*{game.name}*',
-                    f'{getattr(game, "started_ts", game.opened_ts).date().isoformat()} - {content_str}'
+                    f'{(game.started_ts or game.opened_ts).date().isoformat()} - {content_str}'
                 )
             )
         
         await settings.paginate(
-            ctx, fields=fields, title=f'{games.count()} incomplete games\nIncluding player: *{dest.name}*',
+            ctx, fields=fields, title=f'{games.count()} {type_str} games\nIncluding players: *{dest.name}*',
             page_start=0, page_end=15, page_size=15
         )
         
@@ -659,7 +675,7 @@ class Matchmaking(commands.Cog):
         if not game:
             return await ctx.send('Game ID not provided.')
         
-        return await ctx.send(embed=game.embed(ctx))
+        return await ctx.send(embed=game.embed(ctx.guild))
 
 
 def setup(bot, conf):

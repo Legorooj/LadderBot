@@ -161,7 +161,7 @@ class Game(Base):
             'Unconfirmed' if self.is_complete and not self.is_confirmed else
             'Completed'
         )
-        completed_str = f' - Completed {self.win_claimed_ts}' if self.is_complete else ''
+        completed_str = f' - Completed {self.win_claimed_ts.strftime("%Y-%m-%d %H:%M:%S")}' if self.is_complete else ''
         
         embed.set_footer(
             text=f'{self.platform_emoji} {status_str} - Created {self.opened_ts.strftime("%Y-%m-%d %H:%M:%S")}'

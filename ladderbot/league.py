@@ -84,7 +84,7 @@ class League(commands.Cog):
     @staticmethod
     async def add_signup(member: Member, signupmessage, message: Message, emoji, mobile):
         
-        p: db.Player = db.session.query(db.Player).get(member.id)
+        p: db.Player = db.Player.get(member.id)
         if not p:
             await message.remove_reaction(emoji, member)
             return await member.send(f'You must be registered with me to signup for matches.')
@@ -262,16 +262,8 @@ class League(commands.Cog):
             logger.info('Not creating matches for steam - no signups')
         
         # First of all, get all the players.
-        mobile_players = db.session.query(db.Player).filter(
-            db.Player.id.in_(
-                {x.player_id for x in mobile_signups.all()}
-            )
-        ).all()
-        steam_players = db.session.query(db.Player).filter(
-            db.Player.id.in_(
-                {x.player_id for x in steam_signups.all()}
-            )
-        ).all()
+        mobile_players = [x.player for x in mobile_signups.all()]
+        steam_players = [x.player for x in steam_signups.all()]
         
         mobile_players_even = len(mobile_players) % 2 == 0
         steam_players_even = len(steam_players) % 2 == 0
@@ -392,7 +384,7 @@ class League(commands.Cog):
 {% for tier, games in gms.items() if games is not none %}
 Tier {{tier}} matchups:
 {% for game in games %}
-<@{{game.host_id}}> ({{game.host_step}}) hosts vs <@{{game.away_id}}> ({{game.away_step}}) - Game {{game.id}}
+<@{{game.host.id}}> ({{game.host_step}}) hosts vs <@{{game.away_id}}> ({{game.away_step}}) - Game {{game.id}}
 {% endfor %}
 
 

@@ -1,4 +1,6 @@
 # Copyright (c) 2020 Legorooj. This file is licensed under the terms of the Apache license, version 2.0. #
+from typing import List
+
 import datetime
 from discord import Member, TextChannel, utils
 from discord.ext import commands, tasks
@@ -20,11 +22,8 @@ class Matchmaking(commands.Cog):
     async def announce_start(self, guild, channel, game: db.Game):
         drafts: TextChannel = self.bot.get_channel(int(self.conf['channels']['drafts']))
         
-        host: Member = guild.get_member(game.host_id)
-        away: Member = guild.get_member(game.away_id)
-        
         message = (
-            f'New game ID {game.id} started! Roster: {host.mention} {away.mention}'
+            f'New game ID {game.id} started! Roster: {game.host.mention} {game.away.mention}'
         )
         
         await drafts.send(message, embed=game.embed(guild))
@@ -35,12 +34,9 @@ class Matchmaking(commands.Cog):
     async def announce_end(self, guild, channel, game: db.Game):
         drafts: TextChannel = self.bot.get_channel(int(self.conf['channels']['drafts']))
         
-        host: Member = self.bot.get_user(game.host_id)
-        away: Member = self.bot.get_user(game.away_id)
-        winner: Member = self.bot.get_user(game.winner_id)
-        
         message = (
-            f'Game ID {game.id} completed! Congrats {winner.mention}! Roster: {host.mention} {away.mention}'
+            f'Game ID {game.id} completed! Congrats {game.winner.mention}! '
+            f'Roster: {game.host.mention} {game.away.mention}'
         )
         await drafts.send(message, embed=game.embed(guild))
         await channel.send('All sides have confirmed this victory. Good game!')
@@ -74,27 +70,28 @@ class Matchmaking(commands.Cog):
         # Game deletion/host switching loop
         
         # Games that aren't started
-        to_switch = db.session.query(db.Game).filter(
-            db.Game.is_started.is_(False) &
-            db.Game.host_switched.is_(False)
-        ).filter(db.Game.opened_ts < datetime.datetime.utcnow() - datetime.timedelta(days=3))
-        to_delete = db.session.query(db.Game).filter(
-            db.Game.is_started.is_(False) &
-            db.Game.host_switched.is_(True)
-        ).filter(db.Game.opened_ts < datetime.datetime.utcnow() - datetime.timedelta(days=6))
-        guild = self.bot.get_guild(settings.server_id)
+        to_switch = db.Game.query().filter(
+            db.Game.is_started.is_(False),
+            db.Game.host_switched.is_(False),
+            db.Game.opened_ts < datetime.datetime.utcnow() - datetime.timedelta(days=3)
+        )
+        to_delete = db.Game.query().filter(
+            db.Game.is_started.is_(False),
+            db.Game.host_switched.is_(True),
+            db.Game.opened_ts < datetime.datetime.utcnow() - datetime.timedelta(days=6)
+        )
         for game in to_switch.all():
             logger.info(f'Switching host on game {game.id}')
             game: db.Game
-            host, host_step = game.host_id, game.host_step
-            away, away_step = game.away_id, game.away_step
-            game.host_id = away
+            host, host_step = game.host, game.host_step
+            away, away_step = game.away, game.away_step
+            game.host = away
             game.host_step = away_step
-            game.away_id = host
+            game.away = host
             game.away_step = host_step
             game.host_switched = True
             
-            new_host, new_away = guild.get_member(game.host_id), guild.get_member(game.away_id)
+            new_host, new_away = game.host, game.away
             
             db.save()
             
@@ -123,8 +120,8 @@ class Matchmaking(commands.Cog):
             drafts: TextChannel = self.bot.get_channel(int(self.conf['channels']['drafts']))
 
             await drafts.send(
-                f'Game ID {game.id} has been deleted as <@!{game.host_id}> never started it :rage:. '
-                f'Notifying players <@!{game.host_id}> <@!{game.away_id}>'
+                f'Game ID {game.id} has been deleted as {game.host.mention} never started it :rage:. '
+                f'Notifying players {game.host.mention} {game.away.mention}'
             )
             await settings.discord_channel_log(
                 f'Game {game.id} automatically deleted after reaching 6 day limit.'
@@ -154,7 +151,7 @@ class Matchmaking(commands.Cog):
         """
         args = args.split() if args else []
         if not args:
-            await ctx.send(
+            return await ctx.send(
                 f'No arguments supplied. Please run `{ctx.prefix}help {ctx.invoked_with}` to find out how to use '
                 f'this command.'
             )
@@ -181,7 +178,10 @@ class Matchmaking(commands.Cog):
         created = True if player else False
         
         if player:
-            setattr(player, 'steam_name' if steam else 'ign', name)
+            if name is not None:
+                setattr(player, 'steam_name' if steam else 'ign', utils.escape_mentions(name))
+            else:
+                setattr(player, 'steam_name' if steam else 'ign', name)
             db.save()
             
             await ctx.send(
@@ -226,7 +226,7 @@ class Matchmaking(commands.Cog):
             
         db.GameLog.write(
             f'{db.GameLog.member_string(dest)} {"steam" if steam else "mobile"} username '
-            f'{"set" if created else "updated"} to `{utils.escape_markdown(name)}`'
+            f'{"set" if created else "updated"} to `{utils.escape_markdown(name) if name else name}`'
         )
     
     @commands.command()
@@ -237,42 +237,49 @@ class Matchmaking(commands.Cog):
         **Examples**:
         - `[p]name legorooj` - return the steam name of legorooj
         """
-        
-        if member is None:
-            members = [ctx.author]
-        else:
-            members = await settings.get_member(ctx, member)
-        
-        if len(members) == 1:
-            m = members[0]
-            p: db.Player = db.session.query(db.Player).get(m.id)
-            if p is None:
-                return await ctx.send(
-                    f'{m.name}{" ({})".format(m.nick) if m.nick is not None else ""} is not registered with me.'
-                )
-            
-            if p.ign is None and p.steam_name is not None:
-                # If the player is only registered on steam
-                await ctx.send(f'Steam name for **{m.name}**:')
-                await ctx.send(f'{p.ign}')
-            elif p.ign is not None and p.steam_name is None:
-                # If the player is only registered on mobile
-                await ctx.send(f'Name for **{m.name}**:')
-                await ctx.send(f'{p.ign}')
+        async with ctx.typing():
+            if member is None:
+                members = [ctx.author]
             else:
-                # If the player is registered on both steam and mobile
-                await ctx.send(f'Name for **{m.name}** (Steam name: `{p.steam_name}`):')
-                await ctx.send(f'{p.ign}')
-        elif len(members) == 0:
-            await ctx.send(
-                f'Could not find any server member matching **{utils.escape_mentions(member)}**. '
-                f'Try specifying with a @Mention'
-            )
-        else:
-            await ctx.send(
-                f'Found {len(members)} users matching **{utils.escape_mentions(member)}**.'
-                f' Try specifying with an @Mention or more characters.'
-            )
+                members = await settings.get_member(ctx, member)
+    
+            if not members:
+                players = db.Player.get_by_name(member, return_all=True).all()
+            else:
+                players: List[db.Player] = [db.Player.get(m.id) for m in members]
+    
+            player: db.Player
+            
+            if len(players) == 1:
+                p: db.Player = players[0]
+                if p is None:
+                    m = members[0]
+                    return await ctx.send(
+                        f'{m.name}{" ({})".format(m.nick) if m.nick is not None else ""} is not registered with me.'
+                    )
+                
+                if p.ign is None and p.steam_name is not None:
+                    # If the player is only registered on steam
+                    await ctx.send(f'Steam name for **{p.name}**:')
+                    await ctx.send(f'{p.ign}')
+                elif p.ign is not None and p.steam_name is None:
+                    # If the player is only registered on mobile
+                    await ctx.send(f'Name for **{p.name}**:')
+                    await ctx.send(f'{p.ign}')
+                else:
+                    # If the player is registered on both steam and mobile
+                    await ctx.send(f'Name for **{p.name}** (Steam name: `{p.steam_name}`):')
+                    await ctx.send(f'{p.ign}')
+            elif len(members) == 0:
+                await ctx.send(
+                    f'Could not find any server member matching **{utils.escape_mentions(member)}**. '
+                    f'Try specifying with a @Mention'
+                )
+            else:
+                await ctx.send(
+                    f'Found {len(members)} users matching **{utils.escape_mentions(member)}**.'
+                    f' Try specifying with an @Mention or more characters.'
+                )
     
     @commands.command()
     @settings.is_registered()
@@ -292,9 +299,7 @@ class Matchmaking(commands.Cog):
         if game.is_started is True:
             return await ctx.send(f'Game ID {game.id} has already started with name **{game.name}**.')
         
-        host, away = ctx.guild.get_member(game.host_id), ctx.guild.get_member(game.away_id)
-        
-        if ctx.author.id != host.id:
+        if ctx.author.id != game.host.id:
             if not settings.is_mod(ctx.author):
                 return await ctx.send(f'Only the game host or a **@Mod** can do this.')
         
@@ -304,7 +309,7 @@ class Matchmaking(commands.Cog):
                 f'back and enter the name of the game you just made.'
             )
         
-        game.name = game_name
+        game.name = utils.escape_mentions(game_name) if game_name else game_name
         game.is_started = True
         game.started_ts = datetime.datetime.utcnow()
         
@@ -342,9 +347,7 @@ class Matchmaking(commands.Cog):
         elif game.is_complete:
             return await ctx.send('This game is completed. You cannot rename completed games.')
         
-        host = ctx.guild.get_member(game.host_id)
-        
-        if ctx.author.id != host.id:
+        if ctx.author.id != game.host.id:
             if not settings.is_mod(ctx.author):
                 return await ctx.send(f'Only the game host or a **@Mod** can do this.')
         
@@ -355,10 +358,11 @@ class Matchmaking(commands.Cog):
             )
         
         old_name = game.name
-        game.name = game_name
+        game.name = utils.escape_mentions(game_name) if game_name else game_name
         db.save()
         
-        await ctx.send(f'Game {game.id} has been renamed to "**{game_name}**" from "**{old_name}**".')
+        await ctx.send(f'Game {game.id} has been renamed to '
+                       f'"**{utils.escape_mentions(game_name) if game_name else game_name}**" from "**{old_name}**".')
         db.GameLog.write(
             game_id=game.id,
             message=f'{db.GameLog.member_string(ctx.author)} renamed the game to '
@@ -381,57 +385,56 @@ class Matchmaking(commands.Cog):
         
         host: Member
         away: Member
-        winner = None
-        host, away = ctx.guild.get_member(game.host_id), ctx.guild.get_member(game.away_id)
+        winner: db.Player
         
-        if ctx.author.id not in (host.id, away.id) and not settings.is_mod(ctx.author):
+        if ctx.author.id not in (game.host.id, game.away.id) and not settings.is_mod(ctx.author):
             return await ctx.send(f'You are not a participant in game {game.id}.')
         if not game.is_started:
             return await ctx.send(f'Game ID {game.id} has not yet started.')
         if game.is_complete or game.is_confirmed:
-            winner = host if host.id == game.winner_id else away
-        if game.is_confirmed:
-            return await ctx.send(
-                f'Game {game.id} is already completed with winner **{winner.name}**'
-                f'{" ({})".format(winner.nick) if winner.nick is not None else ""}.')
+            winner = game.winner
+            if game.is_confirmed:
+                return await ctx.send(
+                    f'Game {game.id} is already completed with winner **{winner.name}**'
+                )
         
         if not winner_str:
             return await ctx.send(
-                f'Sides in this game are:\nSide 1 (host): '
-                f'{host.name}{" ({})".format(host.nick) if host.nick is not None else ""}\n'
-                f'Side 2 (away): {away.name}{" ({})".format(away.nick) if away.nick is not None else ""}'
+                f'Sides in this game are:\n'
+                f'Side 1 (host): **{utils.escape_markdown(game.host.name)}**\n'
+                f'Side 2 (away): **{utils.escape_markdown(game.away.name)}**'
             )
         
         winning_side: Member = await settings.get_member_raw(ctx, winner_str)
         if not winning_side:
-            matches = [
-                x for x in
-                (await settings.match_member(winner_str, host), await settings.match_member(winner_str, away))
-                if x is not None
-            ]
+            matches = db.Player.get_by_name(winner_str, True, in_game_id=game.id).all()
             if len(matches) == 2:
                 return await ctx.send(
-                    f'"{winner}" matches both sides in game {game.id}. Please be more specific, or use a @Mention'
+                    f'"{winner_str}" matches both sides in game {game.id}. Please be more specific, or use a @Mention'
                 )
             elif len(matches) == 1:
                 winning_side = matches[0]
             else:
                 return await ctx.send(
-                    f'Sides in this game are:\nSide 1 (host): '
-                    f'{host.name}{" ({})".format(host.nick) if host.nick is not None else ""}\n'
-                    f'Side 2 (away): {away.name}{" ({})".format(away.nick) if away.nick is not None else ""}'
+                    f'Sides in this game are:\n'
+                    f'Side 1 (host): {game.host.name}\n'
+                    f'Side 2 (away): {game.away.name}'
                 )
         
-        if settings.is_mod(ctx.author) and ctx.author.id not in (host.id, away.id):
+        if settings.is_mod(ctx.author) and ctx.author.id not in (game.host.id, game.away.id):
             # author is a mod, and not in the game. Mark as won.
             db.GameLog.write(
                 game_id=game.id,
-                message=f'Win claim logged by {db.GameLog.member_string(ctx.author)} for winner'
-                        f'**{utils.escape_markdown(winning_side.display_name)}**'
+                message=f'Win claim logged by {db.GameLog.member_string(ctx.author)} for winner '
+                        f'**{utils.escape_markdown(winning_side.name)}**'
             )
             game.win_confirmed(winning_side.id)
-            await game.process_win(ctx)
-            self.bot.loop.create_task(settings.fix_roles(ctx.author, host, away))
+            await game.process_win()
+            self.bot.loop.create_task(
+                settings.fix_roles(
+                    ctx.author, game.host.member(ctx.guild), game.away.member(ctx.guild)
+                )
+            )
             return await self.announce_end(ctx.guild, ctx.channel, game)
         elif game.is_complete:
             if game.winner_id == winning_side.id:
@@ -443,25 +446,29 @@ class Matchmaking(commands.Cog):
                     # This player hasn't logged a win confirm yet; confirm the game.
                     db.GameLog.write(
                         game_id=game.id,
-                        message=f'Win claim logged by {db.GameLog.member_string(ctx.author)} for winner'
-                                f'**{utils.escape_markdown(winning_side.display_name)}**'
+                        message=f'Win claim logged by {db.GameLog.member_string(ctx.author)} for winner '
+                                f'**{utils.escape_markdown(winning_side.name)}**'
                     )
                     game.win_confirmed(winning_side.id)
-                    await game.process_win(ctx)
-                    self.bot.loop.create_task(settings.fix_roles(ctx.author, host, away))
+                    await game.process_win()
+                    self.bot.loop.create_task(
+                        settings.fix_roles(
+                            ctx.author, game.host.member(ctx.guild), game.away.member(ctx.guild)
+                        )
+                    )
                     return await self.announce_end(ctx.guild, ctx.channel, game)
             else:
                 db.GameLog.write(
                     game_id=game.id,
-                    message=f'Win claim logged by {db.GameLog.member_string(ctx.author)} for winner'
-                            f'**{utils.escape_markdown(winning_side.display_name)}**'
+                    message=f'Win claim logged by {db.GameLog.member_string(ctx.author)} for winner '
+                            f'**{utils.escape_markdown(winning_side.name)}**'
                 )
                 db.GameLog.write(
                     game_id=game.id,
                     message=f'Conflicting win claims; cancelling them.'
                 )
                 # Conflicting win claims; revert them all
-                logged_winner = ctx.guild.get_member(game.winner_id)
+                logged_winner = self.bot.get_user(game.winner_id)
                 await ctx.send(
                     f':warning: game {game.id} already has {logged_winner.name} as the logged winner!'
                 )
@@ -473,7 +480,7 @@ class Matchmaking(commands.Cog):
                 db.save()
                 return await ctx.send(
                     f'All win claims for this game have been **reset** due to there being conflicting win claims.\n'
-                    f'Notifying players {host.mention} {away.mention}'
+                    f'Notifying players {game.host.mention} {game.away.mention}'
                 )
         elif game.winner_id is None:
             # No win claim has been logged yet.
@@ -481,24 +488,29 @@ class Matchmaking(commands.Cog):
                 # Win claim is for the other side - automatically confirm it
                 db.GameLog.write(
                     game_id=game.id,
-                    message=f'Win claim logged by {db.GameLog.member_string(ctx.author)} for winner'
-                            f'**{utils.escape_markdown(winning_side.display_name)}**'
+                    message=f'Win claim logged by {db.GameLog.member_string(ctx.author)} for winner '
+                            f'**{utils.escape_markdown(winning_side.name)}**'
                 )
                 game.win_confirmed(winning_side.id)
-                await game.process_win(ctx)
-                self.bot.loop.create_task(settings.fix_roles(ctx.author, host, away))
+                await game.process_win()
+                self.bot.loop.create_task(
+                    settings.fix_roles(
+                        ctx.author, game.host.member(ctx.guild), game.away.member(ctx.guild)
+                    )
+                )
                 return await self.announce_end(ctx.guild, ctx.channel, game)
             # win claim is not for the other side. Don't autoconfirm.
             db.GameLog.write(
                 game_id=game.id,
-                message=f'Win claim logged by {db.GameLog.member_string(ctx.author)} for winner'
-                        f'**{utils.escape_markdown(winning_side.display_name)}**'
+                message=f'Win claim logged by {db.GameLog.member_string(ctx.author)} for winner '
+                        f'**{utils.escape_markdown(winning_side.name)}**'
             )
             game.win_unconfirmed(winning_side.id, ctx.author.id)
             await ctx.send(
                 f'Game {game.id} completed pending confirmation of winner {winning_side.mention}.\n'
-                f'To confirm, have opponents use the command `$win {game.id} {winner_str}`.\n'
-                f'Notifying {host.mention} {away.mention}.'
+                f'To confirm, have opponents use the command `$win {game.id} '
+                f'{game.winner.name if "@" in winner_str else winner_str}`.\n'
+                f'Notifying {game.host.mention} {game.away.mention}.'
             )
     
     @commands.command()
@@ -568,6 +580,9 @@ class Matchmaking(commands.Cog):
         game.winner_id = None
         db.save()
         
+        host.update_ratio()
+        away.update_ratio()
+        
         self.bot.loop.create_task(settings.fix_roles(ctx.author, host_member, away_member))
 
         db.GameLog.write(
@@ -594,27 +609,33 @@ class Matchmaking(commands.Cog):
         else:
             members = await settings.get_member(ctx, member)
         
+        if not members:
+            players = [db.Player.get_by_name(member)]
+            if players[0] is None:
+                players.pop()
+        else:
+            players: List[db.Player] = [db.Player.get(m.id) for m in members]
+        
         player: db.Player
         
-        if len(members) == 1:
-            m = members[0]
-            player: db.Player = db.session.query(db.Player).get(m.id)
+        if len(players) == 1:
+            player: db.Player = players[0]
             if player is None:
+                # there isn't a player registered in the database, but there is a member in the server matching
+                m = members.pop(0)
                 return await ctx.send(
                     f'*{m.name}{" ({})".format(m.nick) if m.nick is not None else ""}* is not registered with me.'
                 )
-        elif len(members) == 0:
+        elif len(players) == 0:
             return await ctx.send(
-                f'Could not find any server member matching **{utils.escape_mentions(member)}**. '
+                f'Could not find any member matching **{utils.escape_mentions(member)}**. '
                 f'Try specifying with a @Mention'
             )
         else:
             return await ctx.send(
-                f'Found {len(members)} users matching **{utils.escape_mentions(member)}**.'
+                f'Found {len(players)} users matching **{utils.escape_mentions(member)}**.'
                 f' Try specifying with an @Mention or more characters.'
             )
-        
-        dest = ctx.guild.get_member(player.id)
         
         type_str = 'incomplete'
         if ctx.invoked_with == 'incomplete':
@@ -633,19 +654,18 @@ class Matchmaking(commands.Cog):
         
         if games.count() == 0:
             return await ctx.send(
-                f'No results found. See `$help {ctx.invoked_with}` for examples.\nIncluding players: *{dest.name}*'
+                f'No results found. See `$help {ctx.invoked_with}` for examples.\nIncluding players: *{player.name}*'
             )
         
         fields = []
         for game in games.all():
-            host, away = ctx.guild.get_member(game.host_id), ctx.guild.get_member(game.away_id)
             
             if game.is_complete and game.is_confirmed is False:
-                winner = ctx.guild.get_member(game.winner_id)
-                content_str = f'**WINNER**: (Unconfirmed) {winner.display_name}'
+                nm = getattr(game.winner.member(ctx.guild), "display_name", game.winner.name)
+                content_str = f'**WINNER**: (Unconfirmed) {nm}'
             elif game.is_confirmed:
-                winner = ctx.guild.get_member(game.winner_id)
-                content_str = f'**WINNER**: {winner.display_name}'
+                nm = getattr(game.winner.member(ctx.guild), "display_name", game.winner.name)
+                content_str = f'**WINNER**: {nm}'
             elif game.is_started:
                 content_str = 'Incomplete'
             else:
@@ -653,13 +673,13 @@ class Matchmaking(commands.Cog):
             
             fields.append(
                 (
-                    f'Game {game.id}   {host.name} vs {away.name}\n*{game.name}*',
+                    f'Game {game.id}   {game.host.name} vs {game.away.name}\n*{game.name}*',
                     f'{(game.started_ts or game.opened_ts).date().isoformat()} - {content_str}'
                 )
             )
         
         await settings.paginate(
-            ctx, fields=fields, title=f'{games.count()} {type_str} games\nIncluding players: *{dest.name}*',
+            ctx, fields=fields, title=f'{games.count()} {type_str} games\nIncluding players: *{player.name}*',
             page_start=0, page_end=15, page_size=15
         )
         
@@ -676,6 +696,70 @@ class Matchmaking(commands.Cog):
             return await ctx.send('Game ID not provided.')
         
         return await ctx.send(embed=game.embed(ctx.guild))
+    
+    @commands.command()
+    async def player(self, ctx: commands.Context, *, member_str: str = None):
+        """
+        See a player's rank card.
+        
+        **Examples**:
+        - `[p]player` - see your own rank card
+        - `[p]player legorooj` - see Legorooj's rank card
+        """
+        if member_str is None:
+            members = [ctx.author]
+        else:
+            members = await settings.get_member(ctx, member_str)
+
+        if not members:
+            players = [db.Player.get_by_name(member_str)]
+            if players[0] is None:
+                players.pop()
+        else:
+            players: List[db.Player] = [db.Player.get(m.id) for m in members]
+    
+        if len(players) == 1:
+            p = players[0]
+            await ctx.send(embed=p.embed(ctx.guild))
+        elif len(players) == 0:
+            await ctx.send(
+                f'Could not find any member matching **{utils.escape_mentions(member_str)}**. '
+                f'Try specifying with a @Mention'
+            )
+        else:
+            await ctx.send(
+                f'Found {len(players)} users matching **{utils.escape_mentions(member_str)}**.'
+                f' Try specifying with an @Mention or more characters.'
+            )
+    
+    @commands.command(aliases=['leaderboard', 'ladder'])
+    async def lb(self, ctx: commands.Context, *, args: str = None):
+        """
+        Display ladder leaderboard.
+        """
+        fields = []
+        
+        async def process_leaderboard():
+            lb_data = db.Player.leaderboard()
+            
+            for n, player in enumerate(lb_data, start=1):
+                fields.append(
+                    (
+                        f'{n:>3} {player.name}',
+                        f'`Rung {player.rung}\u00A0\u00A0\u00A0\u00A0'
+                        f'W {player.wins().count()} / L {player.losses().count()}`'
+                    )
+                )
+            
+            return fields, lb_data.count()
+        
+        async with ctx.typing():
+            fields, count = await process_leaderboard()
+        
+        await settings.paginate(
+            ctx, fields=fields, title=f'',
+            page_start=0, page_end=10, page_size=10
+        )
 
 
 def setup(bot, conf):

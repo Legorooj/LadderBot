@@ -1,62 +1,157 @@
 # Copyright (c) 2020 Legorooj. This file is licensed under the terms of the Apache license, version 2.0. #
-from sqlalchemy import Column, Integer, String, Boolean, create_engine, BigInteger, DateTime, or_
-from sqlalchemy.orm import Session, Query
-from sqlalchemy.ext.declarative import declarative_base
 import datetime
-from discord.ext import commands
+import discord
+from sqlalchemy import Column, Integer, String, Boolean, create_engine, BigInteger, DateTime, or_, ForeignKey, Float, and_
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import Session, Query
 
 from . import settings
-
-import discord
 
 Base = declarative_base()
 session: Session
 engine = None
 
 
-class Player(Base):
+class ModelBase(Base):
+    __abstract__ = True
+    
+    @classmethod
+    def query(cls) -> Query:
+        return session.query(cls)
+
+    @classmethod
+    def get(cls, pk):
+        return session.query(cls).get(pk)
+
+
+class Player(ModelBase):
     __tablename__ = 'player'
     
     id = Column(BigInteger, primary_key=True, unique=True)
     ign = Column(String, nullable=True)
     steam_name = Column(String, nullable=True)
     rung = Column(Integer, default=1)
+    win_ratio = Column(Float, nullable=True)
+    active = Column(Boolean, nullable=False, default=True)
+    name = Column(String)
+    
+    def update_ratio(self):
+        try:
+            self.win_ratio = self.wins().count() / self.complete().count()
+        except ZeroDivisionError:
+            self.win_ratio = 1/1
+        save()
     
     @property
     def mention(self):
         return f'<@{self.id}>'
     
-    def incomplete(self):
+    @property
+    def user(self):
+        return settings.bot.get_user(self.id)
+
+    def member(self, guild):
+        return guild.get_member(self.id)
+
+    def in_game(self, game_id):
+        return Game.query().filter(Game.id == game_id, or_(Game.host_id == self, Game.away_id == self)).first() is not None
+
+    @classmethod
+    def get_by_name(cls, name_str, return_all=False, in_game_id: int = None):
+        if in_game_id is not None:
+            query: Query = cls.query().join(
+                Game,
+                and_(Game.id == in_game_id, or_(Game.host_id == Player.id, Game.away_id == Player.id)))
+        else:
+            query = cls.query()
+        query: Query = query.filter(
+            cls.name.ilike(f'%{name_str}%')
+        ).distinct()
+        return query.first() if not return_all else query
+    
+    def incomplete(self) -> Query:
         return session.query(Game).filter(
             or_(Game.host_id == self.id, Game.away_id == self.id) &
             Game.is_confirmed.is_(False)
         ).order_by(Game.opened_ts.desc())
     
-    def complete(self):
+    def complete(self) -> Query:
         return session.query(Game).filter(
             or_(Game.host_id == self.id, Game.away_id == self.id) &
             Game.is_complete.is_(True)
         ).order_by(Game.win_claimed_ts.desc())
     
-    def wins(self):
+    def wins(self) -> Query:
         return session.query(Game).filter(
             Game.winner_id == self.id
         ).order_by(Game.win_claimed_ts.desc())
     
-    def losses(self):
+    def losses(self) -> Query:
         return session.query(Game).filter(
-            or_(Game.host_id == self.id, Game.away_id == self.id)
-        ).filter(Game.winner_id != self.id).order_by(Game.win_claimed_ts.desc())
+            or_(Game.host_id == self.id, Game.away_id == self.id),
+            Game.winner_id != self.id
+        ).order_by(Game.win_claimed_ts.desc())
+    
+    @staticmethod
+    def leaderboard():
+        results = session.query(Player).join(Game, or_(Game.away_id == Player.id, Game.host_id == Player.id)).filter(
+            Game.is_confirmed.is_(True),
+            Game.win_claimed_ts > datetime.datetime.utcnow() - datetime.timedelta(days=60),
+            Player.active.is_(True)
+        ).order_by(Player.rung.desc(), Player.win_ratio.desc())
+        
+        return results
+    
+    def leaderboard_rank(self):
+        lb: Query = self.leaderboard()
+        
+        for n, player in enumerate(lb, start=1):
+            player: Player
+            if player == self:
+                return n, lb.count()
+        return 0, lb.count()
+    
+    def embed(self, guild: discord.Guild):
+        
+        embed = discord.Embed(
+            description=f'__Player card for {self.mention}__'
+        )
+        
+        embed.add_field(
+            name='Results',
+            value=f'Rung: {self.rung}\nW {self.wins().count()} / L {self.losses().count()}'
+        )
+        
+        lb_rank, lb_length = self.leaderboard_rank()
+        embed.add_field(
+            name='Ranking',
+            value=f'{lb_rank} of {lb_length}' if lb_rank != 0 else 'Unranked'
+        )
+        
+        if self.ign:
+            embed.add_field(
+                name='Polytopia Game name',
+                value=discord.utils.escape_markdown(self.ign)
+            )
+        if self.steam_name:
+            embed.add_field(
+                name='Steam Name',
+                value=discord.utils.escape_markdown(self.steam_name)
+            )
+        if member := guild.get_member(self.id):
+            embed.set_thumbnail(url=member.avatar_url_as(size=512))
+
+        return embed
 
 
-class Game(Base):
+class Game(ModelBase):
     __tablename__ = 'game'
     
     id = Column(Integer, primary_key=True, unique=True, autoincrement=True)
     name = Column(String, nullable=True)
-    host_id = Column(BigInteger, nullable=False)
-    away_id = Column(BigInteger, nullable=False)
-    winner_id = Column(BigInteger, nullable=True)
+    host_id = Column(ForeignKey(Player.id), nullable=False)
+    away_id = Column(ForeignKey(Player.id), nullable=False)
+    winner_id = Column(ForeignKey(Player.id), nullable=True)
     is_started = Column(Boolean, default=False)
     is_complete = Column(Boolean, default=False)
     is_confirmed = Column(Boolean, default=False)
@@ -71,6 +166,36 @@ class Game(Base):
     started_ts = Column(DateTime, nullable=True)
     win_claimed_by = Column(BigInteger, nullable=True)
     host_switched = Column(Boolean, nullable=False, default=False)
+    
+    @property
+    def host(self) -> Player:
+        return Player.get(self.host_id)
+    
+    @host.setter
+    def host(self, value):
+        if not isinstance(value, Player):
+            raise TypeError(f'value must be a player, not {value.__class__.__name__}')
+        self.host_id = value.id
+
+    @property
+    def away(self) -> Player:
+        return Player.get(self.away_id)
+
+    @away.setter
+    def away(self, value):
+        if not isinstance(value, Player):
+            raise TypeError(f'value must be a player, not {value.__class__.__name__}')
+        self.away_id = value.id
+
+    @property
+    def winner(self) -> Player:
+        return Player.get(self.winner_id)
+
+    @winner.setter
+    def winner(self, value):
+        if not isinstance(value, Player):
+            raise TypeError(f'value must be a player, not {value.__class__.__name__}')
+        self.winner_id = value.id
     
     def win_unconfirmed(self, player_id: int, claimed_by: int):
         self.winner_id = player_id
@@ -91,24 +216,23 @@ class Game(Base):
         
         save()
     
-    async def process_win(self, ctx):
+    async def process_win(self):
         if not self.is_complete or not self.is_confirmed:
             return
         
-        # Load the player and member objects
-        host, away = ctx.guild.get_member(self.host_id), ctx.guild.get_member(self.away_id)
-        winner: discord.Member = host if host.id == self.winner_id else away
-        loser: discord.Member = away if host.id == self.winner_id else host
+        host_id, away_id = self.host_id, self.away_id
+        winner_id = self.winner_id
+        loser_id = away_id if host_id == winner_id else host_id
         
-        winner_p: Player = session.query(Player).get(winner.id)
-        loser_p: Player = session.query(Player).get(loser.id)
+        winner_p: Player = self.winner
+        loser_p: Player = Player.get(loser_id)
         
         # Calculate the step change
-        winner_step_change = 1 if not settings.player_in_placement_matches(winner.id) else 2
-        loser_step_change = -(1 if not settings.player_in_placement_matches(winner.id) else 2)
+        winner_step_change = 1 if not settings.player_in_placement_matches(winner_id) else 2
+        loser_step_change = -(1 if not settings.player_in_placement_matches(loser_id) else 2)
         
-        self.host_step_change = winner_step_change if winner.id == host.id else loser_step_change
-        self.away_step_change = winner_step_change if winner.id == away.id else loser_step_change
+        self.host_step_change = winner_step_change if winner_id == host_id else loser_step_change
+        self.away_step_change = winner_step_change if winner_id == away_id else loser_step_change
         
         # Calculate the new rung values
         winner_new_rung = min(winner_p.rung + winner_step_change, 12)
@@ -123,25 +247,27 @@ class Game(Base):
         )
         
         save()
+        
+        winner_p.update_ratio()
+        loser_p.update_ratio()
     
     def embed(self, guild):
     
-        host: discord.Member = guild.get_member(self.host_id)
-        away: discord.Member = guild.get_member(self.away_id)
-        
+        host, away = self.host, self.away
         embed = discord.Embed(
             title=f'Game {self.id}   '
-                  f'{host.name}{" ({})".format(host.nick) if host.nick else ""} vs '
-                  f'{away.name}{" ({})".format(away.nick) if away.nick else ""}'
+                  f'{host.name} vs '
+                  f'{away.name}'
                   f'\u00a0*{self.name}*')
         
         if self.is_complete:
-            winner: discord.Member = guild.get_member(self.winner_id)
-            embed.title = embed.title + f'\n\nWINNER{" (Unconfirmed)" if not self.is_confirmed else ""}: {winner.name}'
-            embed.set_thumbnail(url=winner.avatar_url_as(size=512))
-    
+            if winner := guild.get_member(self.winner_id):
+                embed.set_thumbnail(url=winner.avatar_url_as(size=512))
+            embed.title = embed.title + f'\n\nWINNER{" (Unconfirmed)" if not self.is_confirmed else ""}: ' \
+                                        f'{self.winner.name}'
+        
         embed.add_field(
-            name=f'__{host.name}{" ({})".format(host.nick) if host.nick else ""}__',
+            name=f'__{host.name}{" ({})".format(nick) if (nick := getattr(host.member(guild), "nick", None)) else ""}__',
             value=f'Rung: {self.host_step}',
             inline=True
         )
@@ -150,7 +276,7 @@ class Game(Base):
         embed.add_field(name='\u200b', value='\u200b', inline=False)
         
         embed.add_field(
-            name=f'__{away.name}{" ({})".format(away.nick) if away.nick else ""}__',
+            name=f'__{away.name}{" ({})".format(nick) if (nick := getattr(away.member(guild), "nick", None)) else ""}__',
             value=f'Rung: {self.away_step}',
             inline=True
         )
@@ -175,16 +301,36 @@ class Game(Base):
         return '' if self.mobile else '🖥'
 
 
-class Signup(Base):
+class Signup(ModelBase):
     __tablename__ = 'signup'
     
     id = Column(Integer, primary_key=True, unique=True, autoincrement=True)
-    signup_id = Column(Integer, nullable=False)
-    player_id = Column(BigInteger, nullable=False)
+    signup_id = Column(ForeignKey('signupmessage.id'), nullable=False)
+    player_id = Column(ForeignKey(Player.id), nullable=False)
     mobile = Column(Boolean, default=True, nullable=False)
 
+    @property
+    def signup(self) -> 'SignupMessage':
+        return SignupMessage.get(self.signup_id)
 
-class SignupMessage(Base):
+    @signup.setter
+    def signup(self, value):
+        if not isinstance(value, Player):
+            raise TypeError(f'value must be a player, not {value.__class__.__name__}')
+        self.signup_id = value.id
+
+    @property
+    def player(self) -> 'Player':
+        return Player.get(self.player_id)
+
+    @player.setter
+    def player(self, value):
+        if not isinstance(value, Player):
+            raise TypeError(f'value must be a player, not {value.__class__.__name__}')
+        self.player_id = value.id
+
+
+class SignupMessage(ModelBase):
     __tablename__ = 'signupmessage'
 
     id = Column(Integer, primary_key=True, unique=True, autoincrement=True)
@@ -193,7 +339,7 @@ class SignupMessage(Base):
     close_at = Column(DateTime, nullable=True)
 
 
-class GameLog(Base):
+class GameLog(ModelBase):
     __tablename__ = 'gamelog'
     
     id = Column(Integer, primary_key=True, unique=True, autoincrement=True)
@@ -208,9 +354,9 @@ class GameLog(Base):
             name = member.display_name
             d_id = member.id
         except AttributeError:
-            # local discordmember database entry
+            # discord.User API object/Player DB instance
             name = member.name
-            d_id = member.discord_id
+            d_id = member.id
         return f'**{discord.utils.escape_markdown(name)}** (`{d_id}`)'
     
     @classmethod

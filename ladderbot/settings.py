@@ -47,7 +47,7 @@ class messages:
 
 
 async def discord_channel_log(*args, **kwargs):
-    channel = await bot.get_channel(conf['channels']['logs'])
+    channel = bot.get_channel(int(conf['channels']['logging']))
     await channel.send(*args, **kwargs)
 discord_channel_log.__signature__ = inspect.signature(discord.abc.Messageable.send)
 
@@ -86,11 +86,18 @@ def player_in_placement_matches(player_id: int):
 async def fix_roles(*members):
     for member in set(members):
         
+        if not member or not isinstance(member, discord.Member):
+            continue
+        
         logger.debug(f'Fixing roles for {member}')
         
-        player = db.session.query(db.Player).get(member.id)
+        player: db.Player = db.session.query(db.Player).get(member.id)
         if player is None:
             continue
+        
+        player.name = member.name
+        db.save()
+        
         rung_roles, p_m, ladder_player, champ, newbie = get_ladder_roles(member.guild)
         # Remove newbie if the member has it
         if newbie in member.roles:
@@ -111,13 +118,27 @@ async def fix_roles(*members):
         
         # Placement matches
         player_in_pm = player_in_placement_matches(member.id)
-        if player_in_pm and p_m not in member.roles:
-            await member.add_roles(p_m)
+        if player_in_pm:
+            if player.complete().count() == 3:
+                player.update_ratio()
+                if player.win_ratio == 0/3:
+                    player.rung = 1
+                elif player.win_ratio == 1/3:
+                    player.rung = 3
+                elif player.win_ratio == 2/3:
+                    player.rung = 5
+                elif player.win_ratio == 3/3:
+                    player.rung = 7
+                else:
+                    await discord_channel_log(f'Error with setting player rung after PM for {player.mention}. '
+                                              f'Notifying <@!{owner_id}>')
+            if p_m not in member.roles:
+                await member.add_roles(p_m)
         elif not player_in_pm:
             await member.remove_roles(p_m)
         
         # Champion
-        if player.rung == 12:
+        if player.leaderboard_rank()[0] == 1:
             await member.add_roles(champ)
         else:
             await member.remove_roles(champ)
@@ -218,7 +239,9 @@ async def get_member_raw(ctx: commands.Context, m):
     match = re.match(r'([0-9]{15,21})$', m) or re.match(r'<@!?([0-9]+)>$', m)
     if match:
         user_id = int(match.group(1))
-        return ctx.guild.get_member(user_id) or discord.utils.get(ctx.message.mentions, id=user_id)
+        return ctx.guild.get_member(user_id) or \
+            discord.utils.get(ctx.message.mentions, id=user_id) or \
+            db.session.query(db.Player).get(user_id)
     return None
 
 
@@ -301,7 +324,10 @@ async def paginate(ctx, title, fields, page_start=0, page_end=10, page_size=10):
                     compare = True
                 elif page_end < len(fields) and e in '➡⏩':
                     compare = True
-            return (u == ctx.message.author) and (r.message.id == sent_message.id) and compare
+            return (
+                    (u == ctx.message.author or u.permissions_in(ctx.channel).manage_messages)
+                    and (r.message.id == sent_message.id) and compare
+            )
 
         try:
             reaction, user = await bot.wait_for('reaction_add', timeout=45.0, check=check)

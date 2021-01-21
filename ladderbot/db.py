@@ -1,4 +1,4 @@
-# Copyright (c) 2020 Legorooj. This file is licensed under the terms of the Apache license, version 2.0. #
+# Copyright (c) 2021 Legorooj. This file is licensed under the terms of the Apache license, version 2.0. #
 import datetime
 import discord
 from sqlalchemy import Column, Integer, String, Boolean, create_engine, BigInteger, DateTime, or_, ForeignKey, Float, and_

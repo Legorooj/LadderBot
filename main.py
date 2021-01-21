@@ -1,6 +1,8 @@
-# Copyright (c) 2020 Legorooj. This file is licensed under the terms of the Apache license, version 2.0. #
+# Copyright (c) 2021 Legorooj. This file is licensed under the terms of the Apache license, version 2.0. #
 import traceback
 from configparser import ConfigParser
+import pathlib
+import os
 
 import discord
 from discord.ext import commands
@@ -9,7 +11,7 @@ from ladderbot import matchmaking, admin, db, settings, league, help as l_help
 from ladderbot.logging import logger
 
 conf = ConfigParser()
-conf.read('config.ini')
+conf.read(pathlib.Path(__file__).parent / 'config.ini')
 
 settings.owner_id = conf['DEFAULT']['owner_id']
 

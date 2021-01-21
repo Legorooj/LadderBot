@@ -512,6 +512,7 @@ Tier {{tier}} matchups:
         embed: Embed = Embed(title=f'LadderBot - credits')
         
         embed.add_field(name='Developer', value='Legorooj (<@608290258978865174>)')
+        embed.add_field(name='Source Code', value='https://github.com/Legorooj/LadderBot')
         embed.add_field(name='Contributions', value='jd (alphaSeahorse)', inline=False)
         
         return await ctx.send(embed=embed)

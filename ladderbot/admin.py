@@ -26,28 +26,29 @@ class Admin(commands.Cog):
     @commands.command(aliases=['restart'])
     @commands.is_owner()
     async def quit(self, ctx: commands.Context):
+        """Stop the bot's process."""
         db.session.close()
         logger.info('Shutting down.')
         await ctx.send('Shutting down...')
         await self.bot.close()
     
-    @commands.command()
+    @commands.command(hidden=True)
     @commands.is_owner()
-    async def clear_signupmessages(self, ctx):
+    async def confirm_clear_signupmessages(self, ctx):
         db.session.query(db.SignupMessage).delete()
         db.save()
         await ctx.send('Cleared.')
 
-    @commands.command()
+    @commands.command(hidden=True)
     @commands.is_owner()
-    async def clear_players(self, ctx):
+    async def confirm_clear_players(self, ctx):
         db.session.query(db.Player).delete()
         db.save()
         await ctx.send('Cleared.')
 
-    @commands.command()
+    @commands.command(hidden=True)
     @commands.is_owner()
-    async def clear_signups(self, ctx):
+    async def confirm_clear_signups(self, ctx):
         db.session.query(db.Signup).delete()
         db.save()
         await ctx.send('Cleared.')
@@ -203,9 +204,9 @@ class Admin(commands.Cog):
                 message=f'{db.GameLog.member_string(after)} changed username from `{before.name}` to `{after.name}`.'
             )
     
-    @commands.command()
+    @commands.command(hidden=True)
     @commands.is_owner()
-    async def update_players(self, ctx: commands.Context):
+    async def confirm_update_players(self, ctx: commands.Context):
         for player in db.Player.query().filter(db.Player.name.is_(None)):
             if m := ctx.guild.get_member(player.id):
                 player.name = m.name

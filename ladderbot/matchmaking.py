@@ -720,6 +720,12 @@ class Matchmaking(commands.Cog):
     
         if len(players) == 1:
             p = players[0]
+            if p is None:
+                m = members[0]
+                return await ctx.send(
+                    f'{m.name}{" ({})".format(m.nick) if m.nick is not None else ""} is not registered with me.'
+                )
+            
             await ctx.send(embed=p.embed(ctx.guild))
         elif len(players) == 0:
             await ctx.send(

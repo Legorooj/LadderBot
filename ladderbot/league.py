@@ -95,6 +95,13 @@ class League(commands.Cog):
             await message.remove_reaction(emoji, member)
             return await member.send(f'You have not set your steam name.')
         
+        if (s := db.Signup.query().filter(db.Signup.player_id == member.id).first()) is not None:
+            await message.remove_reaction(emoji, member)
+            platform_str = 'mobile' if s.mobile else 'steam'
+            return await member.send(
+                f'You are already signed up for {platform_str}. You cannot signup for both platforms.'
+            )
+        
         signup = db.Signup(
             signup_id=signupmessage.id,
             player_id=member.id,

@@ -138,7 +138,7 @@ async def fix_roles(*members):
             await member.remove_roles(p_m)
         
         # Champion
-        if player.leaderboard_rank()[0] == 1:
+        if player.rung == 12 and player.leaderboard_rank()[0] == 1:
             await member.add_roles(champ)
         else:
             await member.remove_roles(champ)

@@ -230,6 +230,33 @@ class Admin(commands.Cog):
         db.save()
         
         await ctx.send('Complete. All players updated.')
+        
+    @commands.command()
+    @settings.is_mod_check()
+    async def swap_host(self, ctx, *, game: settings.GameLoader = None):
+        """
+        *Mod*: Swap the host and away players in a game
+        """
+        if not game:
+            return await ctx.send('Game ID not provided.')
+        
+        game: db.Game
+        old_host, host_step = game.host, game.host_step
+        old_away, away_step = game.away, game.away_step
+        game.host = old_away
+        game.host_step = away_step
+        game.away = old_host
+        game.away_step = host_step
+        game.host_switched = True
+    
+        db.save()
+        
+        db.GameLog.write(
+            message=f'Host switched from `{old_host.name}` to `{old_away.name}` by {db.GameLog.member_string(ctx.author)}.',
+            game_id=game.id
+        )
+        
+        return await ctx.send(f'Host changed from **{old_host.name}** to **{old_away.name}**.')
 
 
 def setup(bot, conf):

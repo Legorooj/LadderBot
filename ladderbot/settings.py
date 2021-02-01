@@ -325,7 +325,7 @@ async def paginate(ctx, title, fields, page_start=0, page_end=10, page_size=10):
                 elif page_end < len(fields) and e in '➡⏩':
                     compare = True
             return (
-                    (u == ctx.message.author or u.permissions_in(ctx.channel).manage_messages)
+                    (u == ctx.message.author or (u.permissions_in(ctx.channel).manage_messages and u != ctx.guild.me))
                     and (r.message.id == sent_message.id) and compare
             )
 

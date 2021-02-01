@@ -766,6 +766,40 @@ class Matchmaking(commands.Cog):
             ctx, fields=fields, title=f'',
             page_start=0, page_end=10, page_size=10
         )
+        
+    @commands.command()
+    @settings.is_registered()
+    async def ping(self, ctx: commands.Context, game: settings.GameLoader = None, *, message: str = None):
+        """
+        Ping the other side in one of your games with a message
+        
+        **Examples**:
+        - `[p]ping 50 hey, I need a restart`
+        - `[p]ping 44 I ban Drylands and Water World`
+        """
+        game: db.Game
+    
+        if not game:
+            return await ctx.send('Game ID not provided.')
+        
+        if not message:
+            return await ctx.send('No message provided.')
+        
+        db.GameLog.write(
+            game_id=game.id,
+            message=f'{db.GameLog.member_string(ctx.author)} pinged game with message:\n*{message}*'
+        )
+        
+        if game.name:
+            header = f'Message from **{ctx.author.display_name}** about game {game.id} **{game.name}**:'
+        else:
+            header = f'Message from **{ctx.author.display_name}** about pending game ID {game.id}:'
+        
+        await ctx.send(
+            f'{header}\n'
+            f'*{message}*\n'
+            f'{game.host.mention} {game.away.mention}'
+        )
 
 
 def setup(bot, conf):

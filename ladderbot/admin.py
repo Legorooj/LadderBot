@@ -243,8 +243,6 @@ class Admin(commands.Cog):
         for player in db.Player.query():
             player: db.Player
             
-            logger.debug(f'Checking rung for player {player.name} ({player.id})')
-            
             games = player.complete().filter(db.Game.is_confirmed.is_(True))
             
             player_rung = 1

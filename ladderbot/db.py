@@ -244,7 +244,7 @@ class Game(ModelBase):
         GameLog.write(
             game_id=self.id,
             message=f'Win is confirmed and rung changes processed. {GameLog.member_string(winner_p)} goes from '
-                    f'{winner_p.rung} to {winner_new_rung}. {GameLog.member_string(winner_p)} goes from {loser_p.rung} '
+                    f'{winner_p.rung} to {winner_new_rung}. {GameLog.member_string(loser_p)} goes from {loser_p.rung} '
                     f'to {loser_new_rung}.'
         )
 

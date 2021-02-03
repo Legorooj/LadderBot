@@ -203,33 +203,6 @@ class Admin(commands.Cog):
             db.GameLog.write(
                 message=f'{db.GameLog.member_string(after)} changed username from `{before.name}` to `{after.name}`.'
             )
-    
-    @commands.command(hidden=True)
-    @commands.is_owner()
-    async def confirm_update_players(self, ctx: commands.Context):
-        for player in db.Player.query().filter(db.Player.name.is_(None)):
-            if m := ctx.guild.get_member(player.id):
-                player.name = m.name
-                continue
-            else:
-                player.active = False
-            
-            await ctx.send(f'Enter discord username for player with in game name "{player.ign}"')
-            
-            def check(message: discord.Message):
-                return message.channel.id == ctx.channel.id and message.author == ctx.author
-            
-            try:
-                msg: discord.Message = await self.bot.wait_for('message', check=check, timeout=30)
-            except asyncio.TimeoutError:
-                await ctx.send(f'No response, skipping.')
-                continue
-            else:
-                player.name = msg.content
-            
-        db.save()
-        
-        await ctx.send('Complete. All players updated.')
         
     @commands.command()
     @settings.is_mod_check()

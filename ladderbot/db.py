@@ -1,4 +1,6 @@
 # Copyright (c) 2021 Legorooj. This file is licensed under the terms of the Apache license, version 2.0. #
+from typing import Union
+
 import datetime
 import discord
 from sqlalchemy import Column, Integer, String, Boolean, create_engine, BigInteger, DateTime, or_, ForeignKey, Float, and_
@@ -6,6 +8,7 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import Session, Query
 
 from . import settings
+from .logging import logger
 
 Base = declarative_base()
 session: Session
@@ -237,16 +240,19 @@ class Game(ModelBase):
         # Calculate the new rung values
         winner_new_rung = min(winner_p.rung + winner_step_change, 12)
         loser_new_rung = max(loser_p.rung + loser_step_change, 1)
-        
-        winner_p.rung = winner_new_rung
-        loser_p.rung = loser_new_rung
 
         GameLog.write(
             game_id=self.id,
-            message=f'Win is confirmed and rung changes processed'
+            message=f'Win is confirmed and rung changes processed. {GameLog.member_string(winner_p)} goes from '
+                    f'{winner_p.rung} to {winner_new_rung}. {GameLog.member_string(winner_p)} goes from {loser_p.rung} '
+                    f'to {loser_new_rung}.'
         )
+
+        winner_p.rung = winner_new_rung
+        loser_p.rung = loser_new_rung
         
         save()
+        logger.info(f'Game {self.id} - win confirmed, rung changes processed. ')
         
         winner_p.update_ratio()
         loser_p.update_ratio()
@@ -347,7 +353,7 @@ class GameLog(ModelBase):
     message_ts = Column(DateTime, nullable=False, default=datetime.datetime.utcnow)
     
     @staticmethod
-    def member_string(member):
+    def member_string(member: Union[discord.Member, discord.User, Player]):
 
         try:
             # discord.Member API object

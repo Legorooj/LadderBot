@@ -96,7 +96,6 @@ async def fix_roles(*members):
             continue
         
         player.name = member.name
-        db.save()
         
         rung_roles, p_m, ladder_player, champ, newbie = get_ladder_roles(member.guild)
         # Remove newbie if the member has it
@@ -110,11 +109,6 @@ async def fix_roles(*members):
         # Player doesn't have a rung role, give it to them
         if not (set(rung_roles) & set(member.roles)):
             await member.add_roles(get_rung_role(player.rung))
-        
-        # Player's rung roles are off. Fix.
-        if len(set(rung_roles) & set(member.roles)) > 1 or get_rung_role(player.rung) not in member.roles:
-            await member.add_roles(get_rung_role(player.rung))
-            await member.remove_roles(*set(rung_roles) ^ {get_rung_role(player.rung)})
         
         # Placement matches
         player_in_pm = player_in_placement_matches(member.id)
@@ -136,12 +130,19 @@ async def fix_roles(*members):
                 await member.add_roles(p_m)
         elif not player_in_pm:
             await member.remove_roles(p_m)
+
+        # Player's rung roles are off. Fix.
+        if len(set(rung_roles) & set(member.roles)) > 1 or get_rung_role(player.rung) not in member.roles:
+            await member.add_roles(get_rung_role(player.rung))
+            await member.remove_roles(*set(rung_roles) ^ {get_rung_role(player.rung)})
         
         # Champion
         if player.rung == 12 and player.leaderboard_rank()[0] == 1:
             await member.add_roles(champ)
         else:
             await member.remove_roles(champ)
+
+        db.save()
 
 
 def is_mod(member: discord.Member):

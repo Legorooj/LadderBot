@@ -230,6 +230,52 @@ class Admin(commands.Cog):
         )
         
         return await ctx.send(f'Host changed from **{old_host.name}** to **{old_away.name}**.')
+    
+    @commands.command()
+    @commands.is_owner()
+    async def check_rungs(self, ctx: commands.Context):
+        
+        await ctx.send('Checking that all rung changes have been applied correctly.')
+        logger.debug('Checking rungs...')
+        
+        done = 0
+        
+        for player in db.Player.query():
+            player: db.Player
+            
+            logger.debug(f'Checking rung for player {player.name} ({player.id})')
+            
+            games = player.complete().filter(db.Game.is_confirmed.is_(True))
+            
+            player_rung = 1
+            for game in games:
+                game: db.Game
+                logger.debug(f'{player.name} ({player.id}) --- game {game.id}, with {game.host_step_change} for the '
+                             f'host, and {game.away_step_change} for away.')
+                if game.host_id == player.id:
+                    player_rung += game.host_step_change
+                else:
+                    player_rung += game.away_step_change
+            
+            if is_bad := (player_rung != player.rung):
+                await ctx.send(f'Player {player.name} ({player.id}) had rung {player.rung} in the database, '
+                               f'but should have had {player_rung}. Fixing...')
+            
+                db.GameLog.write(
+                    f'{db.GameLog.member_string(player)} - rung changed to {player_rung} from {player.rung} as part of '
+                    f'a rung check.'
+                )
+                
+                player.rung = player_rung
+                
+                db.save()
+                
+                if (m := ctx.guild.get_member(player.id)) and is_bad:
+                    self.bot.loop.create_task(settings.fix_roles(m))
+                
+                done += 1
+        
+        await ctx.send(f'{done} players fixed.')
 
 
 def setup(bot, conf):

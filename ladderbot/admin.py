@@ -254,6 +254,11 @@ class Admin(commands.Cog):
                     player_rung += game.host_step_change
                 else:
                     player_rung += game.away_step_change
+                
+                if player_rung < 1:
+                    player_rung = 1
+                elif player_rung > 12:
+                    player_rung = 12
             
             if is_bad := (player_rung != player.rung):
                 await ctx.send(f'Player {player.name} ({player.id}) had rung {player.rung} in the database, '

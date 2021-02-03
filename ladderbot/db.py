@@ -101,7 +101,7 @@ class Player(ModelBase):
             Game.is_confirmed.is_(True),
             Game.win_claimed_ts > datetime.datetime.utcnow() - datetime.timedelta(days=60),
             Player.active.is_(True)
-        ).order_by(Player.rung.desc(), Player.win_ratio.desc())
+        ).order_by(Player.rung.desc(), Player.win_ratio.desc(), Player.id.asc())
         
         return results
     

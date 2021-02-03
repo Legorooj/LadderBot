@@ -53,6 +53,7 @@ class Matchmaking(commands.Cog):
         for game in unconfirmed.all():
             game: db.Game
             game.win_confirmed(game.winner_id)
+            await game.process_win()
             await self.announce_end(
                 self.bot.get_guild(settings.server_id), self.bot.get_channel(self.conf['channels']['logs']), game
             )

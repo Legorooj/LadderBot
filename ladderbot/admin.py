@@ -243,7 +243,7 @@ class Admin(commands.Cog):
         for player in db.Player.query():
             player: db.Player
             
-            games = player.complete().filter(db.Game.is_confirmed.is_(True)).order_by(db.Game.win_claimed_ts.asc())
+            games = player.complete().filter(db.Game.is_confirmed.is_(True)).order_by(db.Game.win_claimed_ts.desc())
             
             player_rung = 1
             

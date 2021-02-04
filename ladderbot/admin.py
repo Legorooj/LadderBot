@@ -245,7 +245,7 @@ class Admin(commands.Cog):
             
             games = db.Game.query().filter(
                 db.or_(db.Game.host_id == player.id, db.Game.away_id == player.id) &
-                db.Game.is_complete.is_(True) & db.Game.is_confirmed.is_(False)
+                db.Game.is_confirmed.is_(True)
             ).order_by(db.Game.win_claimed_ts.asc())
             
             player_rung = 1

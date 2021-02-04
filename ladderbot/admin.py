@@ -245,7 +245,7 @@ class Admin(commands.Cog):
             
             games = db.Game.query().filter(
                 db.or_(db.Game.host_id == player.id, db.Game.away_id == player.id) &
-                db.Game.is_complete.is_(True), db.Game.is_confirmed.is_(False)
+                db.Game.is_complete.is_(True) & db.Game.is_confirmed.is_(False)
             ).order_by(db.Game.win_claimed_ts.asc())
             
             player_rung = 1
@@ -253,8 +253,8 @@ class Admin(commands.Cog):
             msg = f'{player.name}: {player_rung}+'
             for game in games:
                 game: db.Game
-                logger.debug(f'{player.name} ({player.id}) --- game {game.id}, with {game.host_step_change} for the '
-                             f'host, and {game.away_step_change} for away.')
+                logger.debug(f'{player.name} ({player.id}) --- game {game.id} confirmed status {game.is_confirmed}, '
+                             f'with {game.host_step_change} for the host, and {game.away_step_change} for away.')
                 if game.host_id == player.id:
                     n = game.host_step_change
                 else:

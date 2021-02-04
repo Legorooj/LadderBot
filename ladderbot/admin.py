@@ -233,7 +233,7 @@ class Admin(commands.Cog):
     
     @commands.command()
     @commands.is_owner()
-    async def check_rungs(self, ctx: commands.Context, member: discord.Member):
+    async def check_rungs(self, ctx: commands.Context, member: discord.Member = None):
         
         await ctx.send('Checking that all rung changes have been applied correctly.')
         logger.debug('Checking rungs...')
@@ -243,7 +243,10 @@ class Admin(commands.Cog):
         for player in (db.Player.query() if not member else db.Player.query().filter_by(id=member.id)):
             player: db.Player
             
-            games = player.complete().filter(db.Game.is_confirmed.is_(True)).order_by(db.Game.win_claimed_ts.desc())
+            games = db.Game.query().filter(
+                db.or_(db.Game.host_id == player.id, db.Game.away_id == player.id) &
+                db.Game.is_complete.is_(True), db.Game.is_confirmed.is_(False)
+            ).order_by(db.Game.win_claimed_ts.asc())
             
             player_rung = 1
             

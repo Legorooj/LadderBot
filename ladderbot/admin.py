@@ -250,7 +250,7 @@ class Admin(commands.Cog):
             
             player_rung = 1
             
-            msg = f'{player.name}: {player_rung}+'
+            msg = f'{player.name}: {player_rung}'
             for game in games:
                 game: db.Game
                 logger.debug(f'{player.name} ({player.id}) --- game {game.id} confirmed status {game.is_confirmed}, '
@@ -260,7 +260,7 @@ class Admin(commands.Cog):
                 else:
                     n = game.away_step_change
                 
-                msg += f'{n}+'
+                msg += f'+{n}'
                 player_rung += n
                 
                 if player_rung < 1:

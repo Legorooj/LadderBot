@@ -246,19 +246,26 @@ class Admin(commands.Cog):
             games = player.complete().filter(db.Game.is_confirmed.is_(True)).order_by(db.Game.win_claimed_ts.asc())
             
             player_rung = 1
+            
+            msg = f'{player.name}: {player_rung}+'
             for game in games:
                 game: db.Game
                 logger.debug(f'{player.name} ({player.id}) --- game {game.id}, with {game.host_step_change} for the '
                              f'host, and {game.away_step_change} for away.')
                 if game.host_id == player.id:
-                    player_rung += game.host_step_change
+                    n = game.host_step_change
                 else:
-                    player_rung += game.away_step_change
+                    n = game.away_step_change
+                
+                msg += f'{n}+'
+                player_rung += n
                 
                 if player_rung < 1:
                     player_rung = 1
                 elif player_rung > 12:
                     player_rung = 12
+            
+            await ctx.send(f'Rung calculation for {msg} = {player_rung}. Actual rung = {player.rung}')
             
             if is_bad := (player_rung != player.rung):
                 await ctx.send(f'Player {player.name} ({player.id}) had rung {player.rung} in the database, '

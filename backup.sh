@@ -4,8 +4,8 @@ DAY=$(date +%A)
 TARGET=/home/legorooj/backups/polyladder_bak-${DAY}.sqlc
 FULLTARGET=/home/legorooj/backups/polyladder_full_backup.sqlc
 
-/usr/bin/pg_dump -U postgres -Fc  polyladder > $TARGET
-/usr/bin/pg_dump -U postgres -Fc polyladder > $FULLTARGET
+/usr/bin/pg_dump -U legorooj -Fc  polyladder > $TARGET
+/usr/bin/pg_dump -U legorooj -Fc polyladder > $FULLTARGET
 
 if [ $? -eq 0 ]
 then

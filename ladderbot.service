@@ -1,0 +1,11 @@
+[Unit]
+Description=LadderBot Service
+After=multi-user.target
+
+[Service]
+Type=simple
+ExecStart=/srv/projects/ladderbot/venv/bin/python /srv/projects/ladderbot/main.py
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

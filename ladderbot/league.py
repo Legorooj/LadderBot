@@ -369,14 +369,14 @@ class League(commands.Cog):
         # number of people in that rung.
         for r in range(1, 13):
             rung = mobile_tiers[r]
-            rung.sort(key=lambda x: x[0].wins().count())
+            rung.sort(key=lambda x: x[0].win_ratio)
             if len(rung) % 2 == 0:
                 continue
             mobile_tiers[r + 1].append(rung.pop(0))
         
         for r in range(1, 13):
             rung = steam_tiers[r]
-            rung.sort(key=lambda x: x[0].wins().count())
+            rung.sort(key=lambda x: x[0].win_ratio)
             if len(rung) % 2 == 0:
                 continue
             steam_tiers[r + 1].append(rung.pop(0))
@@ -401,8 +401,10 @@ Tier {{tier}} matchups:
         
         if mobile_games or steam_games:
             chan: TextChannel = self.bot.get_channel(int(self.conf['channels']['matchups']))
+            tribe_tier = random.randint(1, 3)
             await chan.send(
-                f'A new week of games has been generated! Here are your games:'
+                f'A new week of games has been generated!\nWe will be using **Tier {tribe_tier}** tribes this week.\n'
+                f'Here are your games:'
             )
             if mobile_games:
                 message = f'\n\n{platform_msg_source.render(gms=mobile_games, platform="Mobile")}'
@@ -459,7 +461,7 @@ Tier {{tier}} matchups:
     
     @commands.command()
     @commands.is_owner()
-    async def gen(self, ctx: commands.Context):
+    async def gen(self, ctx: commands.Context = None):
         await self.create_matchups()
     
     @commands.command()

@@ -403,7 +403,7 @@ Tier {{tier}} matchups:
             chan: TextChannel = self.bot.get_channel(int(self.conf['channels']['matchups']))
             tribe_tier = random.randint(1, 3)
             await chan.send(
-                f'A new week of games has been generated!\nWe will be using **Tier {tribe_tier}** tribes this week.\n'
+                f'A new week of games has been generated!\nWe will be using **Level {tribe_tier}** tribes this week.\n'
                 f'Here are your games:'
             )
             if mobile_games:

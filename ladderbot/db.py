@@ -3,7 +3,9 @@ from typing import Union
 
 import datetime
 import discord
-from sqlalchemy import Column, Integer, String, Boolean, create_engine, BigInteger, DateTime, or_, ForeignKey, Float, and_
+from sqlalchemy import (
+    Column, Integer, String, Boolean, create_engine, BigInteger, DateTime, or_, ForeignKey, Float, and_
+)
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import Session, Query
 
@@ -57,14 +59,17 @@ class Player(ModelBase):
         return guild.get_member(self.id)
 
     def in_game(self, game_id):
-        return Game.query().filter(Game.id == game_id, or_(Game.host_id == self, Game.away_id == self)).first() is not None
+        return Game.query().filter(
+            Game.id == game_id, or_(Game.host_id == self, Game.away_id == self)
+        ).first() is not None
 
     @classmethod
     def get_by_name(cls, name_str, return_all=False, in_game_id: int = None):
         if in_game_id is not None:
             query: Query = cls.query().join(
                 Game,
-                and_(Game.id == in_game_id, or_(Game.host_id == Player.id, Game.away_id == Player.id)))
+                and_(Game.id == in_game_id, or_(Game.host_id == Player.id, Game.away_id == Player.id))
+            )
         else:
             query = cls.query()
         query: Query = query.filter(

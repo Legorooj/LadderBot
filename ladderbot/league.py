@@ -149,7 +149,9 @@ class League(commands.Cog):
                 await self.close_signups()
         else:
             if datetime.datetime.utcnow().weekday() == 5:
-                signupmessages = db.session.query(db.SignupMessage).filter(db.SignupMessage.close_at > datetime.datetime.utcnow()).count()
+                signupmessages = db.session.query(db.SignupMessage).filter(
+                    db.SignupMessage.close_at > datetime.datetime.utcnow()
+                ).count()
                 if not signupmessages:
                     # It's saturday, open the signups
                     logger.info('Opening signups')
@@ -258,8 +260,8 @@ class League(commands.Cog):
     async def create_matchups(self):
         logger.debug(f'Generating matchups')
         
-        mobile_signups = db.session.query(db.Signup).filter_by(mobile=True)
-        steam_signups = db.session.query(db.Signup).filter_by(mobile=False)
+        mobile_signups = db.session.query(db.Signup).filter(db.Signup.mobile.is_(True), db.Signup.player_id.isnot(None))
+        steam_signups = db.session.query(db.Signup).filter(db.Signup.mobile.is_(False), db.Signup.player_id.isnot(None))
         
         if not mobile_signups.count() and not steam_signups.count():
             return logger.info('Not creating matchups - no one has signed up.')
@@ -337,12 +339,18 @@ class League(commands.Cog):
         steam: List[List[db.Player, Member]] = list()
         
         for player in mobile_players:
+            user = self.bot.get_user(player.id)
+            if player is None or user is None:
+                continue
             mobile.append(
-                [player, self.bot.get_user(player.id)]
+                [player, user]
             )
         for player in steam_players:
+            user = self.bot.get_user(player.id)
+            if player is None or user is None:
+                continue
             steam.append(
-                [player, self.bot.get_user(player.id)]
+                [player, user]
             )
         
         # Now that we have an even number of players in each tier, start generating matchups
@@ -369,16 +377,16 @@ class League(commands.Cog):
         # number of people in that rung.
         for r in range(1, 13):
             rung = mobile_tiers[r]
-            rung.sort(key=lambda x: x[0].wins().count())
             if len(rung) % 2 == 0:
                 continue
+            rung.sort(key=lambda x: x[0].wins().count())
             mobile_tiers[r + 1].append(rung.pop(0))
         
         for r in range(1, 13):
             rung = steam_tiers[r]
-            rung.sort(key=lambda x: x[0].wins().count())
             if len(rung) % 2 == 0:
                 continue
+            rung.sort(key=lambda x: x[0].wins().count())
             steam_tiers[r + 1].append(rung.pop(0))
         
         # Rungs are sorted, create the matchups
@@ -461,7 +469,7 @@ Tier {{tier}} matchups:
     
     @commands.command()
     @commands.is_owner()
-    async def gen(self, ctx: commands.Context = None):
+    async def gen(self, _ctx: commands.Context = None):
         await self.create_matchups()
     
     @commands.command()

@@ -271,8 +271,22 @@ class League(commands.Cog):
             logger.info('Not creating matches for steam - no signups')
         
         # First of all, get all the players.
-        mobile_players = [x.player for x in mobile_signups.all()]
-        steam_players = [x.player for x in steam_signups.all()]
+        mobile_players = list(
+            filter(
+                lambda x: x.user is not None,
+                [
+                    x.player for x in mobile_signups.all()
+                ]
+            )
+        )
+        steam_players = list(
+            filter(
+                lambda x: x.user is not None,
+                [
+                    x.player for x in steam_signups.all()
+                ]
+            )
+        )
         
         mobile_players_even = len(mobile_players) % 2 == 0
         steam_players_even = len(steam_players) % 2 == 0

@@ -138,6 +138,9 @@ async def fix_roles(*members):
         # Champion
         if player.rung == 12 and player.leaderboard_rank()[0] == 1:
             await member.add_roles(champ)
+            await bot.get_channel(int(conf['channels']['announcements'])).send(
+                f'{member.mention} has reached the top of the leaderboard and is now the reigning Champion!'
+            )
         else:
             await member.remove_roles(champ)
 

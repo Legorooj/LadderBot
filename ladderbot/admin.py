@@ -1,10 +1,9 @@
 # Copyright (c) 2021 Legorooj. This file is licensed under the terms of the Apache license, version 2.0. #
-import asyncio
-
+import datetime
+import discord
 import os
 import re
-
-import discord
+from discord import guild
 from discord.ext import commands
 
 from ladderbot import db, settings
@@ -289,6 +288,30 @@ class Admin(commands.Cog):
                 done += 1
         
         await ctx.send(f'{done} players fixed.')
+        
+    @commands.command()
+    @settings.is_mod_check()
+    async def deactivate(self, ctx: commands.Context, *args):
+        
+        for player in db.Player.query().all():
+            player: db.Player
+            if player.active and getattr(player.complete().first(), 'win_claimed_ts', datetime.datetime.utcnow()) < (datetime.datetime.utcnow() - datetime.timedelta(weeks=2)):
+                member: discord.Member = player.member(ctx.guild)
+                if member is None:
+                    continue
+                
+                if discord.utils.get(player.member(ctx.guild).roles, name='Mod'):
+                    continue
+                    
+                await member.remove_roles(
+                    discord.utils.get(ctx.guild.roles, name='Champion')
+                )
+                await member.add_roles(
+                    discord.utils.get(ctx.guild.roles, name='Inactive')
+                )
+                
+                await ctx.send(f'Applied inactive role to {player}/{member}')
+        await ctx.send('Completed deactivate.')
 
 
 def setup(bot, conf):

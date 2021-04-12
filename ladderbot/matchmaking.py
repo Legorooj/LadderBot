@@ -44,6 +44,7 @@ class Matchmaking(commands.Cog):
     @tasks.loop(minutes=30)
     async def loop(self):
         # Autoconfirm loop
+        logger.debug('Running autoconfirm loop')
         
         unconfirmed = db.session.query(db.Game).filter(
             db.Game.is_complete.is_(True) &

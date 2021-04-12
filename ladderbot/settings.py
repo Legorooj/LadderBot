@@ -49,7 +49,6 @@ class messages:
 async def discord_channel_log(*args, **kwargs):
     channel = bot.get_channel(int(conf['channels']['logging']))
     await channel.send(*args, **kwargs)
-discord_channel_log.__signature__ = inspect.signature(discord.abc.Messageable.send)
 
 
 def get_ladder_roles(guild=None) -> typing.Tuple[

@@ -295,7 +295,7 @@ class Admin(commands.Cog):
         
         for player in db.Player.query().all():
             player: db.Player
-            if player.active and getattr(player.complete().first(), 'win_claimed_ts', datetime.datetime.utcnow()) < (datetime.datetime.utcnow() - datetime.timedelta(weeks=2)):
+            if player.active and getattr(player.incomplete().first(), 'started_ts', datetime.datetime.utcnow()) < (datetime.datetime.utcnow() - datetime.timedelta(weeks=2)):
                 member: discord.Member = player.member(ctx.guild)
                 if member is None:
                     continue

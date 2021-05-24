@@ -8,7 +8,7 @@ from . import settings
 # noinspection PyUnresolvedReferences
 class MyHelpCommand(commands.MinimalHelpCommand):
     """
-    Based off code from https://ithub.com/Nelluk/Polytopia-ELO-bot.
+    Based off code from https://github.com/Nelluk/Polytopia-ELO-bot.
     """
 
     def __init__(self, **options):

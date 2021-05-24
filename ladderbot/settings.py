@@ -112,19 +112,6 @@ async def fix_roles(*members):
         # Placement matches
         player_in_pm = player_in_placement_matches(member.id)
         if player_in_pm:
-            if player.complete().count() == 3:
-                player.update_ratio()
-                if player.win_ratio == 0/3:
-                    player.rung = 1
-                elif player.win_ratio == 1/3:
-                    player.rung = 3
-                elif player.win_ratio == 2/3:
-                    player.rung = 5
-                elif player.win_ratio == 3/3:
-                    player.rung = 7
-                else:
-                    await discord_channel_log(f'Error with setting player rung after PM for {player.mention}. '
-                                              f'Notifying <@!{owner_id}>')
             if p_m not in member.roles:
                 await member.add_roles(p_m)
         elif not player_in_pm:

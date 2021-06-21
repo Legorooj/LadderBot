@@ -1,9 +1,10 @@
 # Copyright (c) 2021 Legorooj. This file is licensed under the terms of the Apache license, version 2.0. #
 import datetime
+import discord
 import random
 from typing import Dict, List
 
-from discord import TextChannel, Member, Message, RawReactionActionEvent, AllowedMentions, Embed
+from discord import TextChannel, Member, Message, RawReactionActionEvent, AllowedMentions, Embed, User
 from discord.ext import commands, tasks
 from jinja2 import Template
 
@@ -295,11 +296,14 @@ class League(commands.Cog):
             
             async def remove_random(member_list: List, platform):
                 pl = member_list.pop(random.randint(0, len(member_list) - 1))
-                m = self.bot.get_user(pl.id)
-                await m.send(
-                    f'You have been randomly removed from the {platform} matchups for this week\'s PolyLadder games.'
-                    f' Sorry!'
-                )
+                m: User = self.bot.get_user(pl.id)
+                try:
+                    await m.send(
+                        f'You have been randomly removed from the {platform} matchups for this week\'s PolyLadder games.'
+                        f' Sorry!'
+                    )
+                except discord.Forbidden:
+                    pass
                 logger.info(f'{m.name}#{m.discriminator}/{m.id} kicked from {platform} matches.')
             
             # We don't have an even number of players. Kick one of them.

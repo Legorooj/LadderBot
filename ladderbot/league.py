@@ -222,7 +222,12 @@ class League(commands.Cog):
         )
         
         if not manual:
-            await self.create_matchups()
+            try:
+                await self.create_matchups()
+            except Exception as e:
+                await settings.discord_channel_log(
+                    f'Unhandled error (notifying <@{settings.owner_id}>): {e}'
+                )
     
     @commands.command(aliases=['close_signups', 'open_signups'])
     @settings.is_mod_check()

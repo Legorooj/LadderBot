@@ -92,7 +92,7 @@ class Matchmaking(commands.Cog):
             await settings.discord_channel_log(
                 f'Game {game.id} automatically deleted after reaching 6 day limit.'
             )
-            del game
+            game.delete()
             
         # Games that aren't started
         to_switch = db.Game.query().filter(

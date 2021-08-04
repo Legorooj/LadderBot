@@ -36,7 +36,7 @@ class ModelBase(Base):
         session.add(self)
         session.commit()
         
-    def __del__(self):
+    def delete(self):
         session.delete(self)
         session.commit()
 

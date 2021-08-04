@@ -129,7 +129,7 @@ class League(commands.Cog):
         ).first()
         
         if signup:
-            del signup
+            signup.delete()
             
             await member.send(
                 f'You have been removed from the list of players for next week\'s **{"mobile" if mobile else "steam"}**'

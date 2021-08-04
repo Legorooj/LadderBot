@@ -1,8 +1,9 @@
-# Copyright (c) 2021 Legorooj. This file is licensed under the terms of the Apache license, version 2.0. #
-from typing import Union
+# Copyright (c) 2021 Jasper Harrison. This file is licensed under the terms of the Apache license, version 2.0. #
+from typing import Union, Optional
 
 import datetime
 import discord
+from discord.ext import commands
 from sqlalchemy import (
     Column, Integer, String, Boolean, create_engine, BigInteger, DateTime, or_, ForeignKey, Float, and_
 )
@@ -19,14 +20,25 @@ engine = None
 
 class ModelBase(Base):
     __abstract__ = True
+
+    def __init__(self, *args, **kwargs):
+        super(ModelBase, self).__init__(*args, **kwargs)
     
     @classmethod
     def query(cls) -> Query:
         return session.query(cls)
 
     @classmethod
-    def get(cls, pk):
+    def get(cls, pk) -> Optional['ModelBase']:
         return session.query(cls).get(pk)
+    
+    def save(self):
+        session.add(self)
+        session.commit()
+        
+    def __del__(self):
+        session.delete(self)
+        session.commit()
 
 
 class Player(ModelBase):
@@ -278,7 +290,8 @@ class Game(ModelBase):
                                         f'{self.winner.name}'
         
         embed.add_field(
-            name=f'__{host.name}{" ({})".format(nick) if (nick := getattr(host.member(guild), "nick", None)) else ""}__',
+            name=f'__{host.name}'
+                 f'{" ({})".format(nick) if (nick := getattr(host.member(guild), "nick", None)) else ""}__',
             value=f'Rung: {self.host_step}',
             inline=True
         )
@@ -287,7 +300,8 @@ class Game(ModelBase):
         embed.add_field(name='\u200b', value='\u200b', inline=False)
         
         embed.add_field(
-            name=f'__{away.name}{" ({})".format(nick) if (nick := getattr(away.member(guild), "nick", None)) else ""}__',
+            name=f'__{away.name}'
+                 f'{" ({})".format(nick) if (nick := getattr(away.member(guild), "nick", None)) else ""}__',
             value=f'Rung: {self.away_step}',
             inline=True
         )
@@ -310,6 +324,22 @@ class Game(ModelBase):
     @property
     def platform_emoji(self):
         return '' if self.mobile else '🖥'
+    
+    @classmethod
+    async def convert(cls, ctx, game_id):
+        try:
+            game_id = int(game_id)
+        except Exception:
+            await ctx.send(
+                f'Unable to convert "{game_id}" to a number.',
+                allowed_mentions=discord.AllowedMentions(users=False, roles=False)
+            )
+            raise commands.UserInputError()
+        game = cls.get(game_id)
+        if not game:
+            await ctx.send(f'Unable to find game with ID {game_id}')
+            raise commands.UserInputError()
+        return game
 
 
 class Signup(ModelBase):
@@ -373,7 +403,7 @@ class GameLog(ModelBase):
     @classmethod
     def write(cls, message, game_id: int = 0):
         obj = cls(message=f'__{game_id}__ - {message}')
-        add(obj)
+        obj.save()
     
     @classmethod
     def search(cls, keywords: str = None, negative_keyword: str = None, limit: int = 500):

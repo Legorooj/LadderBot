@@ -1,4 +1,4 @@
-# Copyright (c) 2021 Legorooj. This file is licensed under the terms of the Apache license, version 2.0. #
+# Copyright (c) 2021 Jasper Harrison. This file is licensed under the terms of the Apache license, version 2.0. #
 from typing import List
 
 import datetime
@@ -47,7 +47,7 @@ class Matchmaking(commands.Cog):
         # Autoconfirm loop
         logger.debug('Running autoconfirm loop')
         
-        unconfirmed = db.session.query(db.Game).filter(
+        unconfirmed = db.Game.query().filter(
             db.Game.is_complete.is_(True) &
             db.Game.is_confirmed.is_(False)
         ).filter(db.Game.win_claimed_ts < datetime.datetime.utcnow() - datetime.timedelta(hours=24))
@@ -70,19 +70,38 @@ class Matchmaking(commands.Cog):
             await settings.discord_channel_log(f'Autoconfirm process complete. {unconfirmed.count()} games confirmed.')
         
         # Game deletion/host switching loop
+
+        to_delete = db.Game.query().filter(
+            db.Game.is_started.is_(False),
+            db.Game.host_switched.is_(True),
+            db.Game.opened_ts < datetime.datetime.utcnow() - datetime.timedelta(days=6)
+        )
         
+        for game in to_delete:
+            logger.info(f'Deleting full game {game.id} as it was never started.')
+            db.GameLog.write(
+                game_id=game.id,
+                message=f'Game automatically deleted after reaching 6 day limit.'
+            )
+            drafts: TextChannel = self.bot.get_channel(int(self.conf['channels']['drafts']))
+
+            await drafts.send(
+                f'Game ID {game.id} has been deleted as {game.host.mention} never started it :rage:. '
+                f'Notifying players {game.host.mention} {game.away.mention}'
+            )
+            await settings.discord_channel_log(
+                f'Game {game.id} automatically deleted after reaching 6 day limit.'
+            )
+            del game
+            
         # Games that aren't started
         to_switch = db.Game.query().filter(
             db.Game.is_started.is_(False),
             db.Game.host_switched.is_(False),
             db.Game.opened_ts < datetime.datetime.utcnow() - datetime.timedelta(days=3)
         )
-        to_delete = db.Game.query().filter(
-            db.Game.is_started.is_(False),
-            db.Game.host_switched.is_(True),
-            db.Game.opened_ts < datetime.datetime.utcnow() - datetime.timedelta(days=6)
-        )
-        for game in to_switch.all():
+        
+        for game in to_switch:
             logger.info(f'Switching host on game {game.id}')
             game: db.Game
             host, host_step = game.host, game.host_step
@@ -95,7 +114,7 @@ class Matchmaking(commands.Cog):
             
             new_host, new_away = game.host, game.away
             
-            db.save()
+            game.save()
             
             drafts: TextChannel = self.bot.get_channel(int(self.conf['channels']['drafts']))
             
@@ -112,23 +131,6 @@ class Matchmaking(commands.Cog):
                 f'{new_host.mention} has become the host for Game ID {game.id} as {new_away.mention} '
                 f'never started it.'
             )
-        
-        for game in to_delete.all():
-            logger.info(f'Deleting full game {game.id} as it was never started.')
-            db.GameLog.write(
-                game_id=game.id,
-                message=f'Game automatically deleted after reaching 6 day limit.'
-            )
-            drafts: TextChannel = self.bot.get_channel(int(self.conf['channels']['drafts']))
-
-            await drafts.send(
-                f'Game ID {game.id} has been deleted as {game.host.mention} never started it :rage:. '
-                f'Notifying players {game.host.mention} {game.away.mention}'
-            )
-            await settings.discord_channel_log(
-                f'Game {game.id} automatically deleted after reaching 6 day limit.'
-            )
-            db.delete(game)
         
         if to_switch.count() != 0:
             logger.info(f'Host switch process complete. {unconfirmed.count()} games switched.')
@@ -176,7 +178,7 @@ class Matchmaking(commands.Cog):
         
         steam = ctx.invoked_with == 'steamname'
         
-        player = db.session.query(db.Player).filter(db.Player.id == dest.id).first()
+        player = db.Player.query().filter(db.Player.id == dest.id).first()
         created = True if player else False
         
         if player:
@@ -184,7 +186,7 @@ class Matchmaking(commands.Cog):
                 setattr(player, 'steam_name' if steam else 'ign', utils.escape_mentions(name))
             else:
                 setattr(player, 'steam_name' if steam else 'ign', name)
-            db.save()
+            player.save()
             
             await ctx.send(
                 f'{dest.mention} has been updated'
@@ -200,7 +202,7 @@ class Matchmaking(commands.Cog):
                     id=dest.id,
                     ign=name
                 )
-            db.add(player)
+            player.save()
             
             await ctx.send(
                 f'{dest.mention} has successfully registered themselves with me on '
@@ -210,11 +212,11 @@ class Matchmaking(commands.Cog):
         if name is not None:
             await settings.fix_roles(ctx.author, dest)
             if steam:
-                alts = db.session.query(db.Player).filter(
+                alts = db.Player.query().filter(
                     db.Player.steam_name.ilike(name)
                 )
             else:
-                alts = db.session.query(db.Player).filter(
+                alts = db.Player.query().filter(
                     db.Player.ign.ilike(name)
                 )
             if alts.count() > 1:
@@ -286,7 +288,7 @@ class Matchmaking(commands.Cog):
     @commands.command()
     @settings.is_registered()
     @settings.is_in_bot_channel()
-    async def start(self, ctx: commands.Context, game: settings.GameLoader = None, *, game_name: str = None):
+    async def start(self, ctx: commands.Context, game: db.Game = None, *, game_name: str = None):
         """
         Mark a game as started. Use this command after you have created the game in Polytopia.
         
@@ -315,7 +317,7 @@ class Matchmaking(commands.Cog):
         game.is_started = True
         game.started_ts = datetime.datetime.utcnow()
         
-        db.save()
+        game.save()
         
         await self.announce_start(ctx.guild, ctx.channel, game)
         await settings.fix_roles(ctx.author)
@@ -329,7 +331,7 @@ class Matchmaking(commands.Cog):
     @commands.command()
     @settings.is_registered()
     @settings.is_in_bot_channel()
-    async def rename(self, ctx: commands.Context, game: settings.GameLoader = None, *, game_name: str = None):
+    async def rename(self, ctx: commands.Context, game: db.Game = None, *, game_name: str = None):
         """
         Renames an existing game (due to restarts).
         
@@ -361,7 +363,7 @@ class Matchmaking(commands.Cog):
         
         old_name = game.name
         game.name = utils.escape_mentions(game_name) if game_name else game_name
-        db.save()
+        game.save()
         
         await ctx.send(f'Game {game.id} has been renamed to '
                        f'"**{utils.escape_mentions(game_name) if game_name else game_name}**" from "**{old_name}**".')
@@ -374,7 +376,7 @@ class Matchmaking(commands.Cog):
     @commands.command()
     @settings.is_registered()
     @settings.is_in_bot_channel()
-    async def win(self, ctx: commands.Context, game: settings.GameLoader = None, *, winner_str: str = None):
+    async def win(self, ctx: commands.Context, game: db.Game = None, *, winner_str: str = None):
         """
         Declare the winner of a game
         
@@ -479,7 +481,7 @@ class Matchmaking(commands.Cog):
                 game.win_claimed_ts = None
                 game.win_claimed_by = None
                 game.is_confirmed = False
-                db.save()
+                game.save()
                 return await ctx.send(
                     f'All win claims for this game have been **reset** due to there being conflicting win claims.\n'
                     f'Notifying players {game.host.mention} {game.away.mention}'
@@ -517,7 +519,7 @@ class Matchmaking(commands.Cog):
     
     @commands.command()
     @settings.is_mod_check()
-    async def unstart(self, ctx: commands.Context, game: settings.GameLoader = None):
+    async def unstart(self, ctx: commands.Context, game: db.Game = None):
         """*Mod*: reset an in progress game to a pending game"""
         game: db.Game
         
@@ -532,7 +534,7 @@ class Matchmaking(commands.Cog):
         game.is_started = False
         game.is_name = None
         game.started_ts = None
-        db.save()
+        game.save()
 
         db.GameLog.write(
             game_id=game.id,
@@ -543,7 +545,7 @@ class Matchmaking(commands.Cog):
     
     @commands.command()
     @settings.is_mod_check()
-    async def unwin(self, ctx: commands.Context, game: settings.GameLoader = None):
+    async def unwin(self, ctx: commands.Context, game: db.Game = None):
         """*Mod*: Reset a completed game to incomplete"""
         game: db.Game
         
@@ -554,8 +556,8 @@ class Matchmaking(commands.Cog):
             return await ctx.send(f'Game {game.id} is not marked as completed.')
         
         # Load the objects
-        host = db.session.query(db.Player).get(game.host_id)
-        away = db.session.query(db.Player).get(game.away_id)
+        host = db.Player.get(game.host_id)
+        away = db.Player.get(game.away_id)
         away_rung, host_rung = away.rung, host.rung
         
         host_member, away_member = ctx.guild.get_member(game.host_id), ctx.guild.get_member(game.away_id)
@@ -580,7 +582,7 @@ class Matchmaking(commands.Cog):
         game.is_confirmed = False
         game.win_claimed_ts = None
         game.winner_id = None
-        db.save()
+        game.save()
         
         host.update_ratio()
         away.update_ratio()
@@ -686,7 +688,7 @@ class Matchmaking(commands.Cog):
         )
         
     @commands.command()
-    async def game(self, ctx: commands.Context, *, game: settings.GameLoader = None):
+    async def game(self, ctx: commands.Context, *, game: db.Game = None):
         """
         Show details on a game.
         
@@ -771,7 +773,7 @@ class Matchmaking(commands.Cog):
         
     @commands.command()
     @settings.is_registered()
-    async def ping(self, ctx: commands.Context, game: settings.GameLoader = None, *, message: str = None):
+    async def ping(self, ctx: commands.Context, game: db.Game = None, *, message: str = None):
         """
         Ping the other side in one of your games with a message
         

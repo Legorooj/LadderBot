@@ -1,9 +1,8 @@
-# Copyright (c) 2021 Legorooj. This file is licensed under the terms of the Apache license, version 2.0. #
+# Copyright (c) 2021 Jasper. This file is licensed under the terms of the Apache license, version 2.0. #
 import datetime
 import discord
 import os
 import re
-from discord import guild
 from discord.ext import commands
 
 from ladderbot import db, settings
@@ -34,27 +33,27 @@ class Admin(commands.Cog):
     @commands.command(hidden=True)
     @commands.is_owner()
     async def confirm_clear_signupmessages(self, ctx):
-        db.session.query(db.SignupMessage).delete()
+        db.SignupMessage.query().delete()
         db.save()
         await ctx.send('Cleared.')
 
     @commands.command(hidden=True)
     @commands.is_owner()
     async def confirm_clear_players(self, ctx):
-        db.session.query(db.Player).delete()
+        db.Player.query().delete()
         db.save()
         await ctx.send('Cleared.')
 
     @commands.command(hidden=True)
     @commands.is_owner()
     async def confirm_clear_signups(self, ctx):
-        db.session.query(db.Signup).delete()
+        db.Signup.query().delete()
         db.save()
         await ctx.send('Cleared.')
     
     @commands.command()
     @commands.is_owner()
-    async def delete(self, ctx: commands.Context, game: settings.GameLoader, *, args: str = None):
+    async def delete(self, ctx: commands.Context, game: db.Game, *, args: str = None):
         """*Owner*: delete an in progress/yet to be started game"""
         game: db.Game
         args = args or ''
@@ -75,7 +74,7 @@ class Admin(commands.Cog):
     
     @commands.command()
     @settings.is_mod_check()
-    async def confirm(self, ctx: commands.Context, *, game: settings.GameLoader = None):
+    async def confirm(self, ctx: commands.Context, *, game: db.Game = None):
         """
         *Mod*: List unconfirmed games, or confirm unconfirmed games.
         
@@ -164,7 +163,7 @@ class Admin(commands.Cog):
     @commands.Cog.listener()
     async def on_member_remove(self, member):
         
-        player: db.Player = db.session.query(db.Player).get(member.id)
+        player: db.Player = db.Player.get(member.id)
         
         if not player:
             return
@@ -183,7 +182,7 @@ class Admin(commands.Cog):
     @commands.Cog.listener()
     async def on_member_join(self, member):
         
-        player: db.Player = db.session.query(db.Player).get(member.id)
+        player: db.Player = db.Player.get(member.id)
         
         if not player:
             return
@@ -194,10 +193,10 @@ class Admin(commands.Cog):
     @commands.Cog.listener()
     async def on_user_update(self, before: discord.User, after: discord.User):
         if before.name != after.name:
-            p: db.Player = db.session.query(db.Player).get(after.id)
+            p: db.Player = db.Player.get(after.id)
             p.name = after.name
     
-            db.save()
+            p.save()
     
             db.GameLog.write(
                 message=f'{db.GameLog.member_string(after)} changed username from `{before.name}` to `{after.name}`.'
@@ -205,26 +204,25 @@ class Admin(commands.Cog):
         
     @commands.command()
     @settings.is_mod_check()
-    async def swap_host(self, ctx, *, game: settings.GameLoader = None):
+    async def swap_host(self, ctx, *, game: db.Game = None):
         """
         *Mod*: Swap the host and away players in a game
         """
         if not game:
             return await ctx.send('Game ID not provided.')
         
-        game: db.Game
-        old_host, host_step = game.host, game.host_step
-        old_away, away_step = game.away, game.away_step
+        old_host, host_step, old_away, away_step = game.host, game.host_step, game.away, game.away_step
         game.host = old_away
         game.host_step = away_step
         game.away = old_host
         game.away_step = host_step
         game.host_switched = True
     
-        db.save()
+        game.save()
         
         db.GameLog.write(
-            message=f'Host switched from `{old_host.name}` to `{old_away.name}` by {db.GameLog.member_string(ctx.author)}.',
+            message=f'Host switched from `{old_host.name}` to `{old_away.name}` by '
+                    f'{db.GameLog.member_string(ctx.author)}.',
             game_id=game.id
         )
         
@@ -280,7 +278,7 @@ class Admin(commands.Cog):
                 
                 player.rung = player_rung
                 
-                db.save()
+                player.save()
                 
                 if (m := ctx.guild.get_member(player.id)) and is_bad:
                     self.bot.loop.create_task(settings.fix_roles(m))
@@ -291,11 +289,14 @@ class Admin(commands.Cog):
         
     @commands.command()
     @settings.is_mod_check()
-    async def deactivate(self, ctx: commands.Context, *args):
+    async def deactivate(self, ctx: commands.Context):
         
         for player in db.Player.query().all():
             player: db.Player
-            if player.active and getattr(player.incomplete().first(), 'opened_ts', datetime.datetime.utcnow()) < (datetime.datetime.utcnow() - datetime.timedelta(weeks=2)):
+            if player.active and getattr(
+                    player.incomplete().first(), 'opened_ts',
+                    datetime.datetime.utcnow()
+            ) < (datetime.datetime.utcnow() - datetime.timedelta(weeks=2)):
                 member: discord.Member = player.member(ctx.guild)
                 if member is None:
                     continue

@@ -1,4 +1,4 @@
-# Copyright (c) 2021 Legorooj. This file is licensed under the terms of the Apache license, version 2.0. #
+# Copyright (c) 2021 Jasper Harrison. This file is licensed under the terms of the Apache license, version 2.0. #
 import asyncio
 import datetime
 import io
@@ -75,14 +75,14 @@ def get_rung_role(rung: int, guild=None):
 
 
 def player_in_placement_matches(player_id: int):
-    return db.session.query(db.Game).filter(
+    return db.Game.query().filter(
         db.Game.is_complete.is_(True) &
         db.Game.is_confirmed.is_(True) &
         db.or_(db.Game.host_id == player_id, db.Game.away_id == player_id)
     ).count() < 4
 
 
-async def fix_roles(*members):
+async def fix_roles(*members: discord.Member):
     for member in set(members):
         
         if not member or not isinstance(member, discord.Member):
@@ -90,7 +90,7 @@ async def fix_roles(*members):
         
         logger.debug(f'Fixing roles for {member}')
         
-        player: db.Player = db.session.query(db.Player).get(member.id)
+        player: db.Player = db.Player.get(member.id)
         if player is None:
             continue
         
@@ -124,14 +124,15 @@ async def fix_roles(*members):
         
         # Champion
         if player.rung == 12 and player.leaderboard_rank()[0] == 1:
-            await member.add_roles(champ)
-            await bot.get_channel(int(conf['channels']['announcements'])).send(
-                f'{member.mention} has reached the top of the leaderboard and is now the reigning Champion!'
-            )
+            if champ not in member.roles:
+                await member.add_roles(champ)
+                await bot.get_channel(int(conf['channels']['announcements'])).send(
+                    f'{member.mention} has reached the top of the leaderboard and is now the reigning Champion!'
+                )
         else:
             await member.remove_roles(champ)
 
-        db.save()
+        player.save()
 
 
 def is_mod(member: discord.Member):
@@ -150,7 +151,7 @@ def is_mod_check():
 
 def is_registered():
     async def predicate(ctx: commands.Context):
-        registered = db.session.query(db.Player).get(ctx.author.id) is not None
+        registered = db.Player.get(ctx.author.id) is not None
         if not registered and not ctx.invoked_with.startswith('help'):
             await ctx.send(
                 f'{ctx.author.mention} is not registered with me. You must be registered to use this command.'
@@ -231,7 +232,7 @@ async def get_member_raw(ctx: commands.Context, m):
         user_id = int(match.group(1))
         return ctx.guild.get_member(user_id) or \
             discord.utils.get(ctx.message.mentions, id=user_id) or \
-            db.session.query(db.Player).get(user_id)
+            db.Player.get(user_id)
     return None
 
 
@@ -245,30 +246,12 @@ async def match_member(member: str, target):
 
 
 def complete_since(ts, player):
-    games = db.session.query(db.Game).filter(
+    games = db.Game.query().filter(
         db.or_(db.Game.host_id == player.id, db.Game.away_id == player.id)
     ).filter(
         db.Game.win_claimed_ts > ts
     )
     return games.count() != 0
-
-
-class GameLoader(commands.Converter):
-    
-    async def convert(self, ctx, game_id):
-        try:
-            game_id = int(game_id)
-        except Exception:
-            await ctx.send(
-                f'Unable to convert "{game_id}" to a number.',
-                allowed_mentions=discord.AllowedMentions(users=False, roles=False)
-            )
-            raise commands.UserInputError()
-        game = db.session.query(db.Game).get(game_id)
-        if not game:
-            await ctx.send(f'Unable to find game with ID {game_id}')
-            raise commands.UserInputError()
-        return game
 
 
 # noinspection DuplicatedCode

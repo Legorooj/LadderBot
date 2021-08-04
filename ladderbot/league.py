@@ -1,4 +1,4 @@
-# Copyright (c) 2021 Legorooj. This file is licensed under the terms of the Apache license, version 2.0. #
+# Copyright (c) 2021 Jasper Harrison. This file is licensed under the terms of the Apache license, version 2.0. #
 import datetime
 import discord
 import random
@@ -32,7 +32,7 @@ class League(commands.Cog):
     
     @commands.Cog.listener()
     async def on_raw_reaction_add(self, payload: RawReactionActionEvent):
-        signupmessage: db.SignupMessage = db.session.query(db.SignupMessage).filter(
+        signupmessage: db.SignupMessage = db.SignupMessage.query().filter(
             db.SignupMessage.is_open.is_(True)
         ).first()
         
@@ -59,7 +59,7 @@ class League(commands.Cog):
     
     @commands.Cog.listener()
     async def on_raw_reaction_remove(self, payload: RawReactionActionEvent):
-        msg: db.SignupMessage = db.session.query(db.SignupMessage).filter(
+        msg: db.SignupMessage = db.SignupMessage.query().filter(
             db.SignupMessage.is_open.is_(True)
         ).first()
         
@@ -109,7 +109,7 @@ class League(commands.Cog):
             mobile=mobile
         )
         
-        db.add(signup)
+        signup.save()
         
         await member.send(
             f'You are now signed up for next week\'s **{"mobile" if mobile else "steam"}** games. '
@@ -122,14 +122,14 @@ class League(commands.Cog):
     
     @staticmethod
     async def remove_signup(member: Member, signupmessage, mobile):
-        signup: db.Signup = db.session.query(db.Signup).filter_by(
+        signup: db.Signup = db.Signup.query().filter_by(
             signup_id=signupmessage.id,
             player_id=member.id,
             mobile=mobile
         ).first()
         
         if signup:
-            db.delete(signup)
+            del signup
             
             await member.send(
                 f'You have been removed from the list of players for next week\'s **{"mobile" if mobile else "steam"}**'
@@ -142,7 +142,7 @@ class League(commands.Cog):
     
     @tasks.loop(minutes=5)
     async def signup_loop(self):
-        signupmessage = db.session.query(db.SignupMessage).filter_by(is_open=True).first()
+        signupmessage = db.SignupMessage.query().filter_by(is_open=True).first()
         if signupmessage:
             # Signups are open. Check if we can close them.
             if signupmessage.close_at < datetime.datetime.utcnow():
@@ -150,7 +150,7 @@ class League(commands.Cog):
                 await self.close_signups()
         else:
             if datetime.datetime.utcnow().weekday() == 5:
-                signupmessages = db.session.query(db.SignupMessage).filter(
+                signupmessages = db.SignupMessage.query().filter(
                     db.SignupMessage.close_at > datetime.datetime.utcnow()
                 ).count()
                 if not signupmessages:
@@ -186,14 +186,12 @@ class League(commands.Cog):
         
         day = settings.next_day(0)
         
-        db.add(
-            db.SignupMessage(
-                message_id=msg.id,
-                is_open=True,
-                close_at=day
-            )
-        )
-        db.save()
+        db.SignupMessage(
+            message_id=msg.id,
+            is_open=True,
+            close_at=day
+        ).save()
+        
         self.message_id = msg.id
         
         logger.info(
@@ -202,7 +200,7 @@ class League(commands.Cog):
         )
     
     async def close_signups(self, manual=False):
-        signup_message: db.SignupMessage = db.session.query(db.SignupMessage).filter_by(is_open=True).first()
+        signup_message: db.SignupMessage = db.SignupMessage.query().filter_by(is_open=True).first()
         channel: TextChannel = self.bot.get_channel(
             int(self.conf['channels']['announcements'])
         )
@@ -213,7 +211,7 @@ class League(commands.Cog):
         await msg.clear_reactions()
         
         signup_message.is_open = False
-        db.save()
+        signup_message.save()
         self.message_id = None
         
         logger.info(
@@ -242,7 +240,7 @@ class League(commands.Cog):
         if ctx.invoked_with == 'close_signups':
             
             # Make sure there are actually signups open.
-            if not db.session.query(db.SignupMessage).filter_by(is_open=True).first():
+            if not db.SignupMessage.query().filter_by(is_open=True).first():
                 return await ctx.send('Signups are not open, and therefore cannot be closed.')
             
             logger.debug(f'Close signups triggered manually by {ctx.author.name}/{ctx.author.id}')
@@ -253,7 +251,7 @@ class League(commands.Cog):
         elif ctx.invoked_with == 'open_signups':
             
             # Make sure there aren't signups already open
-            if db.session.query(db.SignupMessage).filter_by(is_open=True).first():
+            if db.SignupMessage.query().filter_by(is_open=True).first():
                 return await ctx.send('Signups are already open, and more cannot be opened.')
             
             logger.debug(f'Open signups triggered manually by {ctx.author.name}/{ctx.author.id}')
@@ -266,8 +264,8 @@ class League(commands.Cog):
     async def create_matchups(self):
         logger.debug(f'Generating matchups')
         
-        mobile_signups = db.session.query(db.Signup).filter(db.Signup.mobile.is_(True), db.Signup.player_id.isnot(None))
-        steam_signups = db.session.query(db.Signup).filter(db.Signup.mobile.is_(False), db.Signup.player_id.isnot(None))
+        mobile_signups = db.Signup.query().filter(db.Signup.mobile.is_(True), db.Signup.player_id.isnot(None))
+        steam_signups = db.Signup.query().filter(db.Signup.mobile.is_(False), db.Signup.player_id.isnot(None))
         
         if not mobile_signups.count() and not steam_signups.count():
             return logger.info('Not creating matchups - no one has signed up.')
@@ -304,8 +302,8 @@ class League(commands.Cog):
                 m: User = self.bot.get_user(pl.id)
                 try:
                     await m.send(
-                        f'You have been randomly removed from the {platform} matchups for this week\'s PolyLadder games.'
-                        f' Sorry!'
+                        f'You have been randomly removed from the {platform} matchups for this week\'s PolyLadder '
+                        f'games. Sorry!'
                     )
                 except discord.Forbidden:
                     pass
@@ -398,19 +396,14 @@ class League(commands.Cog):
         
         # Iterate through each rung, from the bottom up, and move people up if there's an odd
         # number of people in that rung.
-        for r in range(1, 13):
-            rung = mobile_tiers[r]
-            if len(rung) % 2 == 0:
-                continue
-            rung.sort(key=lambda x: x[0].wins().count())
-            mobile_tiers[r + 1].append(rung.pop(0))
         
-        for r in range(1, 13):
-            rung = steam_tiers[r]
-            if len(rung) % 2 == 0:
-                continue
-            rung.sort(key=lambda x: x[0].wins().count())
-            steam_tiers[r + 1].append(rung.pop(0))
+        for tiers in [mobile_tiers, steam_tiers]:
+            for r in range(1, 13):
+                rung = tiers[r]
+                if len(rung) % 2 == 0:
+                    continue
+                rung.sort(key=lambda x: x[0].wins().count())
+                tiers[r + 1].append(rung.pop(0))
         
         # Rungs are sorted, create the matchups
         mobile_games = self.make_games(mobile_tiers, True)
@@ -480,7 +473,7 @@ Tier {{tier}} matchups:
                     opened_ts=datetime.datetime.utcnow(),
                     step=tier_number
                 )
-                db.add(game)
+                game.save()
                 db.GameLog.write(game_id=game.id,
                                  message=f'Game opened by me. {db.GameLog.member_string(host[1])} hosts against '
                                          f'{db.GameLog.member_string(away[1])}'
@@ -538,7 +531,7 @@ Tier {{tier}} matchups:
             value=f'Once a game ends, you can tell the bot who won by using the `{ctx.prefix}win` command.'
         )
         
-        embed.set_footer(text='Developer: Legorooj')
+        embed.set_footer(text='Developer: Legorooj (Jasper Harrison)')
         embed.set_thumbnail(url=self.bot.user.avatar_url_as(size=512))
         
         return await ctx.send(embed=embed)
@@ -551,7 +544,7 @@ Tier {{tier}} matchups:
         
         embed: Embed = Embed(title=f'LadderBot - credits')
         
-        embed.add_field(name='Developer', value='Legorooj (<@608290258978865174>)')
+        embed.add_field(name='Developer', value='Legorooj (Jasper Harrison) (<@608290258978865174>)')
         embed.add_field(name='Source Code', value='https://github.com/Legorooj/LadderBot')
         embed.add_field(name='Contributions', value='jd (alphaSeahorse)', inline=False)
         

@@ -57,7 +57,7 @@ class Matchmaking(commands.Cog):
             game.win_confirmed(game.winner_id)
             await game.process_win()
             await self.announce_end(
-                self.bot.get_guild(settings.server_id), self.bot.get_channel(self.conf['channels']['logs']), game
+                self.bot.get_guild(settings.server_id), self.bot.get_channel(int(self.conf['channels']['logs'])), game
             )
             await settings.discord_channel_log(
                 f'Game {game.id} autoconfirmed. Win claimed more than 24 hours ago. 1 of 2 sides had confirmed.'

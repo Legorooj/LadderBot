@@ -1,12 +1,12 @@
 # Copyright (c) 2021 Legorooj. This file is licensed under the terms of the Apache license, version 2.0. #
-import discord
-from discord.ext import commands
+import asyncio
 import datetime
+import io
 import re
 import typing
-import asyncio
-import inspect
-import io
+
+import discord
+from discord.ext import commands
 
 from . import db, logging
 
@@ -20,7 +20,7 @@ conf: typing.MutableMapping
 
 class emojis:
     """
-    http://unicode.org/emoji/charts/full-emoji-list.html
+    https://unicode.org/emoji/charts/full-emoji-list.html
 
     Use one of:
 
@@ -271,6 +271,7 @@ class GameLoader(commands.Converter):
         return game
 
 
+# noinspection DuplicatedCode
 async def paginate(ctx, title, fields, page_start=0, page_end=10, page_size=10):
     # Based off code from PolyELO bot - https://github.com/Nelluk/Polytopia-ELO-bot
 

@@ -39,6 +39,7 @@ class Matchmaking(commands.Cog):
             f'Roster: {game.host.mention} {game.away.mention}'
         )
         await drafts.send(message, embed=game.embed(guild))
+        await channel.send(message)
         await channel.send('All sides have confirmed this victory. Good game!')
     
     @tasks.loop(minutes=30)

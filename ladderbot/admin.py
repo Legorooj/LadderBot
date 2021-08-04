@@ -153,7 +153,7 @@ class Admin(commands.Cog):
                 (f'`{entry.message_ts.strftime("%Y-%m-%d %H:%M:%S")}`', entry.message[:500])
             )
             
-        message_list = message_list or [('No entries found', '\x00')]
+        message_list = message_list or [('ERROR', 'No entries found')]
         
         await settings.paginate(
             ctx, f'Searching for log entries containing *{search_term}*'.replace("_", ""),

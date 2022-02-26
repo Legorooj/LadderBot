@@ -341,6 +341,15 @@ class Admin(commands.Cog):
         srcp.id = dest.id
 
         db.GameLog.write(f'{src.id} migrated to {dest.id}')
+        await ctx.send(f'{src.id} migrated to {dest.id}')
+
+    @commands.command()
+    @commands.is_owner()
+    async def delete_player(self, ctx: commands.Context, m: discord.Member):
+        if player := db.Player.get(m.id):
+            player.delete()
+
+        return await ctx.send(f'Player {m.mention} deleted.')
 
 
 def setup(bot, conf):

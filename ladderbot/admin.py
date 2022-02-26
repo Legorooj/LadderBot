@@ -314,6 +314,34 @@ class Admin(commands.Cog):
                 await ctx.send(f'Applied inactive role to {player}/{member}')
         await ctx.send('Completed deactivate.')
 
+    @commands.command()
+    @commands.is_owner()
+    async def migrate(self, ctx: commands.Context, src: discord.Member, dest: discord.Member):
+
+        srcp = db.Player.get(src.id)
+
+        if destp := db.Player.get(dest.id):
+            destp.delete()
+
+        if srcp is None:
+            return await ctx.send(f'{src.mention} isn\'t registered with the bot and therefore cannot be migrated.')
+
+        for game in srcp.complete() + srcp.incomplete():
+            for attr in ('host_id', 'away_id', 'winner_id', 'win_claimed_by'):
+                if getattr(game, attr) == srcp.id:
+                    setattr(game, attr, dest.id)
+
+        db.save()
+
+        for signup in db.Signup.query().all():
+            if signup.player_id == srcp.id:
+                signup.player_id = dest.id
+
+        db.save()
+        srcp.id = dest.id
+
+        db.GameLog.write(f'{src.id} migrated to {dest.id}')
+
 
 def setup(bot, conf):
     bot.add_cog(Admin(bot, conf))

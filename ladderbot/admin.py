@@ -320,15 +320,12 @@ class Admin(commands.Cog):
 
         srcp = db.Player.get(src.id)
 
-        if destp := db.Player.get(dest.id):
-            destp.delete()
-
         if srcp is None:
             return await ctx.send(f'{src.mention} isn\'t registered with the bot and therefore cannot be migrated.')
 
-        for game in srcp.complete() + srcp.incomplete():
+        for game in db.Game.query().filter(db.or_(db.Game.host_id == src.id, db.Game.away_id == src.id)).all():
             for attr in ('host_id', 'away_id', 'winner_id', 'win_claimed_by'):
-                if getattr(game, attr) == srcp.id:
+                if getattr(game, attr) == src.id:
                     setattr(game, attr, dest.id)
 
         db.save()
@@ -339,6 +336,7 @@ class Admin(commands.Cog):
 
         db.save()
         srcp.id = dest.id
+        srcp.delete()
 
         db.GameLog.write(f'{src.id} migrated to {dest.id}')
         await ctx.send(f'{src.id} migrated to {dest.id}')
